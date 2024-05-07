@@ -1,0 +1,1 @@
+python3 ../apps/generate_group_op_unittests.py pir-group-op-programs.py
