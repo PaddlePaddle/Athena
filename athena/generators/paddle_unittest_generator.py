@@ -108,9 +108,19 @@ def RunStaticUnittest(unittest_class_name, input_tensors: list, body_code_stmts:
         input_tensor.dtype))
     return sep.join(l)
       
-  def render_unittest_body(num_tab_spaces):
-    sep="\n" + (" " * num_tab_spaces)
-    return sep.join(body_code_stmts)
+  def render_unittest_body(render_header_and_body, render_tail):
+    def render(i, stmt):
+      if i + 1 == len(body_code_stmts):
+        return render_tail(i, stmt)
+      return render_header_and_body(i, stmt)
+    return "\n".join([""] + [
+      indented_stmt
+      for i, stmt in enumerate(body_code_stmts)
+      for indented_stmt in render(i, stmt)
+    ])
+
+  def join_by_comma(l):
+    return ", ".join(l)
   
   return f"""
 import os
@@ -125,13 +135,42 @@ import unittest
 import numpy as np
 import paddle
 
+def NumCurrentUnittestOperations():
+  return {len(body_code_stmts) - 1}
+
+def GetPaddleDebugNumAllowedOps():
+  try:
+    return int(os.getenv('PADDLE_DEBUG_NUM_ALLOWED_OPS'))
+  except:
+    return None
+
+paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
+
+def FastReturn(i):
+  return (
+    type(paddle_debug_num_allowed_ops) is int
+    and i >= paddle_debug_num_allowed_ops
+  )
 
 class {unittest_class_name}(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
     def forward(self, {input_arg_names}):
-        {render_unittest_body(num_tab_spaces=2*4)}
+        {render_unittest_body(
+          render_header_and_body=lambda i, stmt: [
+            f"        if FastReturn({i}):",
+            f"          return {join_by_comma(stmt.tensors_used_by_downstream)}",
+            f"        ",
+            f"        {stmt.comment}",
+            f"        {stmt.pycode}",
+            f"        ",
+          ],
+          render_tail=lambda i, stmt: [
+            f"        {stmt.comment}",
+            f"        {stmt.pycode}",
+          ],
+        )}
 
 
 class Test{unittest_class_name}(unittest.TestCase):
