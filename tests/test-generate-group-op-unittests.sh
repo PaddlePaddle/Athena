@@ -1,1 +1,1 @@
-python3 ../athena/apps/generate_group_op_unittests.py pir-group-op-programs.py --output_dir=./
+python3 -m athena.group_op_unittests pir-group-op-programs.py --output_dir=./

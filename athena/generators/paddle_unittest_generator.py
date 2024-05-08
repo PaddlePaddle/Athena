@@ -136,21 +136,21 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-  return {len(body_code_stmts) - 1}
+    return {len(body_code_stmts) - 1}
 
 def GetPaddleDebugNumAllowedOps():
-  try:
-    return int(os.getenv('PADDLE_DEBUG_NUM_ALLOWED_OPS'))
-  except:
-    return None
+    try:
+        return int(os.getenv('PADDLE_DEBUG_NUM_ALLOWED_OPS'))
+    except:
+        return None
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
 def FastReturn(i):
-  return (
-    type(paddle_debug_num_allowed_ops) is int
-    and i >= paddle_debug_num_allowed_ops
-  )
+    return (
+        type(paddle_debug_num_allowed_ops) is int
+        and i >= paddle_debug_num_allowed_ops
+    )
 
 class {unittest_class_name}(paddle.nn.Layer):
     def __init__(self):
@@ -222,7 +222,17 @@ class Test{unittest_class_name}(unittest.TestCase):
         cinn_outs = self.train(use_cinn=True)
 
         for cinn_out, dy_out in zip(cinn_outs, dy_outs):
-          np.testing.assert_allclose(cinn_out.numpy(), dy_out.numpy(), atol=1e-6)
+          if type(cinn_out) is list and type(dy_out) is list:
+            for x, y in zip(cinn_out, dy_out):
+              self.assert_all_close(x, y)
+          else:
+            self.assert_all_close(cinn_out, dy_out)
+
+    def assert_all_close(self, x, y):
+        if (hasattr(x, "numpy") and hasattr(y, "numpy")):
+            np.testing.assert_allclose(x.numpy(), y.numpy(), atol=1e-6)
+        else:
+            assert x == y
 
 
 if __name__ == '__main__':

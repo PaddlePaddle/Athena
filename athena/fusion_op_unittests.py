@@ -1,7 +1,7 @@
+from athena.util.load_pir_py_classes import GetProgramClasses
 from athena.generators.fusion_op_unittest_generator import (
   FusionOpUnittestGenerator
 )
-from athena.apps import load_pir_py_classes
 import sys
 from absl import app
 from absl import flags
@@ -33,7 +33,7 @@ def WriteToFile(filepath, unittest):
     f.write(unittest)
 
 def GetOutputUnittests(input_file_path):
-  for cls in load_pir_py_classes.GetProgramClasses(input_file_path):
+  for cls in GetProgramClasses(input_file_path):
     ir_program = cls()
     generator = FusionOpUnittestGenerator()
     op_name2unittest = generator.Generate(ir_program)

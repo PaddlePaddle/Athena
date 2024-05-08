@@ -3,7 +3,7 @@ from athena.traits.type_trait import TypeTrait
 from athena.traits.attr_trait import AttrTrait
 from athena.traits.op_trait import OpTrait
 from athena.generators.group_op_unittest_generator import GroupOpUnittestGenerator
-from athena.apps import load_pir_py_classes
+from athena.util import load_pir_py_classes
 import sys
 
 
