@@ -11,7 +11,7 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-    return 7
+    return 1
 
 def GetPaddleDebugNumAllowedOps():
     try:
@@ -27,59 +27,23 @@ def FastReturn(i):
         and i >= paddle_debug_num_allowed_ops
     )
 
-class FusionOp(paddle.nn.Layer):
+class GroupOp(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, data_0, full_0):
-    
+    def forward(self, while_0):
+
         if FastReturn(0):
-            return data_0, full_0
-    
-        # (xf32) <- (1x-1x768xf32)
-        reduce_sum_0 = paddle.sum(data_0, keepdim=False, axis=[])
-    
-        if FastReturn(1):
-            return full_0, reduce_sum_0
-    
-        # (1xf32) <- ()
-        full_1 = paddle.full(shape=[1], dtype='float32', fill_value=0)
-    
-        if FastReturn(2):
-            return full_0, reduce_sum_0, full_1
-    
-        # (1xf32) <- (xf32)
-        broadcast_0 = paddle.broadcast_to(reduce_sum_0, [1])
-    
-        if FastReturn(3):
-            return full_0, full_1, broadcast_0
-    
-        # (1xb) <- (1xf32, 1xf32)
-        greater_than_0 = broadcast_0 > full_1
-    
-        if FastReturn(4):
-            return full_0, greater_than_0
-    
-        # (1xf32) <- ()
-        full_2 = paddle.full(shape=[1], dtype='float32', fill_value=1)
-    
-        if FastReturn(5):
-            return full_0, greater_than_0, full_2
-    
-        # (1xb) <- (1xf32, 1xf32)
-        less_than_0 = full_0 < full_2
-    
-        if FastReturn(6):
-            return greater_than_0, less_than_0
-    
-        # (1xb) <- (1xb, 1xb)
-        logical_and_0 = paddle.logical_and(greater_than_0, less_than_0)
-    
-        # () <- (1xb)
-        return logical_and_0
+            return while_0
+
+        # (1x-1x768xf32) <- (1x-1x768xf32)
+        exp_0 = paddle.exp(while_0)
+
+        # () <- (1x-1x768xf32)
+        return exp_0
 
 
-class TestFusionOp(unittest.TestCase):
+class TestGroupOp(unittest.TestCase):
     def setUp(self):
         paddle.seed(2024)
         self.prepare_data()
@@ -87,7 +51,6 @@ class TestFusionOp(unittest.TestCase):
     def prepare_data(self):
         self.inputs = [
             paddle.uniform([1, 2, 768], dtype='float32', min=-0.5, max=0.5),
-            paddle.uniform([1], dtype='float32', min=-0.5, max=0.5),
         ]
         for input in self.inputs:
           input.stop_gradient = True
@@ -96,7 +59,6 @@ class TestFusionOp(unittest.TestCase):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
             paddle.static.InputSpec(shape=[1, None, 768], dtype='float32'),
-            paddle.static.InputSpec(shape=[1], dtype='float32'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(
@@ -107,7 +69,7 @@ class TestFusionOp(unittest.TestCase):
         )
 
     def train(self, use_cinn):
-        net = FusionOp()
+        net = GroupOp()
         net.eval()
         net = self.apply_to_static(net, use_cinn)
         out = net(*self.inputs)
