@@ -51,13 +51,15 @@ class Test{{unittest_class_name}}(unittest.TestCase):
 
     def prepare_data(self):
         self.inputs = [
-        {%- for shape, dtype, big_dtype, min, max in input_tensor_descs %}
+        {%- for shape, dtype, big_dtype, data, min, max in input_tensor_descs %}
         {%- if big_dtype == "bool" %}
             paddle.zeros({{shape}}, dtype='{{dtype}}'),
         {%- elif big_dtype == "int64" %}
             paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='{{dtype}}'),
         {%- elif big_dtype == "float64" %}
             paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}}),
+        {%- elif big_dtype == "dim" %}
+            paddle.to_tensor({{data}}, dtype='{{dtype}}'),
         {%- endif %}
         {%- endfor %}
         ]

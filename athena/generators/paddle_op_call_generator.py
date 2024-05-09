@@ -30,26 +30,59 @@ class GSOutputDimGenerator:
   def _GenerateReciprocal(self, _, operand):
     raise NotImplementedError("dead code")
 
-  def _GenerateAdd(self, _, lhs, rhs):
-    if type(rhs) is ir_attr.ArrayAttribute and rhs.value[0].value == "Negative":
-      return f"({self.Generate(lhs)} - {self.Generate(rhs.value[1])})"
-    return f"({self.Generate(lhs)} + {self.Generate(rhs)})"
+  def _GenerateAdd(self, _, *args):
+    def IsNegtive(operand):
+      return (
+        type(operand) is ir_attr.ArrayAttribute
+        and operand.value[0].value == "Negative"
+      )
+    def ConvertOperand(i, operand):
+      if IsNegtive(operand):
+        return (" - " if i > 0 else "-") + self.Generate(operand.value[1])
+      else:
+        return (" + " if i > 0 else "") + self.Generate(operand)
+    ret = "".join([
+      ConvertOperand(i, operand)
+      for i, operand in enumerate(args)
+    ])
+    return f"({ret})"
 
-  def _GenerateMul(self, _, lhs, rhs):
-    if type(rhs) is ir_attr.ArrayAttribute and rhs.value[0].value == "Reciprocal":
-      return f"({self.Generate(lhs)} / {self.Generate(rhs.value[1])})"
-    return f"({self.Generate(lhs)} * {self.Generate(rhs)})"
+  def _GenerateMul(self, _, *args):
+    def IsReciprocal(operand):
+      return (
+        type(operand) is ir_attr.ArrayAttribute
+        and operand.value[0].value == "Reciprocal"
+      )
+    def ConvertOperand(i, operand):
+      if IsReciprocal(operand):
+        return (" / " if i > 0 else "1 / ") + self.Generate(operand.value[1])
+      else:
+        return (" * " if i > 0 else "") + self.Generate(operand)
+    ret = "".join([
+      ConvertOperand(i, operand)
+      for i, operand in enumerate(args)
+    ])
+    return f"({ret})"
 
-  def _GenerateMax(self, _, lhs, rhs):
-    return f"{self.m}.maximum({self.Generate(lhs)}, {self.Generate(rhs)})"
+  def _GenerateMax(self, _, arg0, *args):
+    ret = self.Generate(lhs)
+    for arg in args:
+      ret = f"{self.m}.maximum({ret}, {self.Generate(arg)})"
+    return ret
 
-  def _GenerateMin(self, _, lhs, rhs):
-    return f"{self.m}.minimum({self.Generate(lhs)}, {self.Generate(rhs)})"
+  def _GenerateMin(self, _, arg0, *args):
+    ret = self.Generate(lhs)
+    for arg in args:
+      ret = f"{self.m}.minimum({ret}, {self.Generate(arg)})"
+    return ret
 
-  def _GenerateBroadcast(self, _, lhs, rhs):
-    lhs_placeholder = f"{self.m}.empty({self.Generate(lhs)})"
-    rhs_placeholder = f"{self.m}.empty({self.Generate(rhs)})"
-    return f"{self.m}.shape({lhs_placeholder} + {rhs_placeholder})"
+  def _GenerateBroadcast(self, _, *args):
+    empties = [
+      f"{self.m}.empty({self.Generate(arg)})"
+      for arg in args
+    ]
+    empties_sum = " + ".join(empties)
+    return f"{self.m}.shape({empties_sum})"
 
   def _GenerateSymbolInputExpr(self, tag, inputs, tensor_idx, dim_idx):
     method_name = f"_{tag}"
@@ -144,6 +177,9 @@ class PaddleOpCallGenerator:
   def cinn_op_reduce_sum(self, op, x):
     return f"{self.m}.sum({x.name}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
 
+  def cinn_op_reduce_prod(self, op, x):
+    return f"{self.m}.prod({x.name}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
+
   def pd_op_sqrt(self, op, x):
     return f"{self.m}.sqrt({x.name})"
 
@@ -168,6 +204,9 @@ class PaddleOpCallGenerator:
   def pd_op_logical_and(self, op, x, y):
     return f"{self.m}.logical_and({x.name}, {y.name})"
 
+  def pd_op_maximum(self, op, x, y):
+    return f"{self.m}.maximum({x.name}, {y.name})"
+
   def cinn_op_scale(self, op, x):
     return f"{x.name} * {op.attrs['scale']} + {op.attrs['bias']}"
 
@@ -185,6 +224,15 @@ class PaddleOpCallGenerator:
 
   def pd_op_unsqueeze(self, op, x, axis):
     return f"{self.m}.unsqueeze({x.name}, {axis.name})"
+
+  def pd_op_sin(self, op, x):
+    return f"{self.m}.sin({x.name})"
+
+  def pd_op_erf(self, op, x):
+    return f"{self.m}.erf({x.name})"
+
+  def pd_op_cos(self, op, x):
+    return f"{self.m}.cos({x.name})"
 
   def cinn_op_generate_shape(self, op, *inputs):
     generator = GSOutputDimGenerator(

@@ -36,6 +36,7 @@ InputTensorMeta = namedtuple("InputTensorMeta", [
   "shape",
   "dtype",
   "big_dtype",
+  "data", # `big_dtype` must be "dim"
   "min",
   "max",
 ])
@@ -47,15 +48,24 @@ InputSpecDesc = namedtuple("InputSpecDesc", [
 
 def RenderTemplate(unittest_class_name, input_tensors: list, body_code_stmts: list):
   template = _GetTemplate("template_paddle_unittest.py")
-  example_dim = 2
   input_arg_names = [
     input_tensor.name for input_tensor in input_tensors
   ]
+  def GetShape(tensor):
+    example_dim = 2
+    return [(dim if dim >= 0 else example_dim) for dim in tensor.shape]
+  def GetData(tensor):
+    return None
+  def GetBigType(tensor):
+    if GetData(tensor) is not None:
+      return "dim"
+    return type2bigger_type[tensor.dtype]
   input_tensor_descs = [
     InputTensorMeta(
-      shape=[(dim if dim >= 0 else example_dim) for dim in input_tensor.shape],
+      shape=GetShape(input_tensor),
       dtype=input_tensor.dtype,
-      big_dtype=type2bigger_type[input_tensor.dtype],
+      big_dtype=GetBigType(input_tensor),
+      data=GetData(input_tensor),
       min=getattr(InitMinGetter, input_tensor.dtype)(),
       max=getattr(InitMaxGetter, input_tensor.dtype)(),
     )
