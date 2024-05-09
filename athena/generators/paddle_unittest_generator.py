@@ -1,3 +1,6 @@
+import os
+from jinja2 import Template
+from collections import namedtuple
 from athena.generators.paddle_func_body_generator import (
   PaddleFuncBodyGenerator
 )
@@ -12,58 +15,12 @@ class PaddleUnittestGenerator:
 
   def Generate(self, input_tensors):
     input_tensors, body_code_stmts = self.body_generator.Generate(input_tensors)
-    return RunStaticUnittest(
+    # return RunStaticUnittest(
+    return RenderTemplate(
       unittest_class_name=self.unittest_class_name,
       input_tensors=input_tensors,
       body_code_stmts=body_code_stmts
     )
-
-
-
-class InitMinGetter:
-  def bool():
-    return "False" 
-
-  def bfloat16():
-    return "-0.5" 
-
-  def float16():
-    return "-0.5" 
-
-  def float32():
-    return "-0.5" 
-
-  def float64():
-    return "-0.5"
-
-  def int32():
-    return "0"
-
-  def int64():
-    return "0"
-
-
-class InitMaxGetter:
-  def bool():
-    return "False" 
-
-  def bfloat16():
-    return "0.5" 
-
-  def float16():
-    return "0.5" 
-
-  def float32():
-    return "0.5" 
-
-  def float64():
-    return "0.5" 
-    
-  def int32():
-    return "1"
-
-  def int64():
-    return "1"
 
 
 type2bigger_type = dict(
@@ -76,6 +33,54 @@ type2bigger_type = dict(
   int64="int64",
 )
 
+InputTensorMeta = namedtuple("InputTensorMeta", [
+  "shape",
+  "dtype",
+  "big_dtype",
+  "min",
+  "max",
+])
+
+InputSpecDesc = namedtuple("InputSpecDesc", [
+  "shape",
+  "dtype",
+])
+
+def RenderTemplate(unittest_class_name, input_tensors: list, body_code_stmts: list):
+  template = _GetTemplate("template_paddle_unittest.py")
+  example_dim = 2
+  input_arg_names = [
+    input_tensor.name for input_tensor in input_tensors
+  ]
+  input_tensor_descs = [
+    InputTensorMeta(
+      shape=[(dim if dim >= 0 else example_dim) for dim in input_tensor.shape],
+      dtype=input_tensor.dtype,
+      big_dtype=type2bigger_type[input_tensor.dtype],
+      min=getattr(InitMinGetter, input_tensor.dtype)(),
+      max=getattr(InitMaxGetter, input_tensor.dtype)(),
+    )
+    for input_tensor in input_tensors
+  ]
+  input_spec_shape_dtypes = [
+    InputSpecDesc(
+      shape=[(dim if dim >= 0 else None) for dim in input_tensor.shape],
+      dtype=input_tensor.dtype
+    )
+    for input_tensor in input_tensors
+  ]
+  return template.render(
+    stmts=list(enumerate(body_code_stmts)),
+    unittest_class_name=unittest_class_name,
+    input_arg_names=input_arg_names,
+    input_tensor_descs=input_tensor_descs,
+    input_spec_shape_dtypes=input_spec_shape_dtypes,
+  )
+
+def _GetTemplate(template_name):
+  dir_path = os.path.dirname(os.path.realpath(__file__))
+  with open(f"{dir_path}/{template_name}", "r") as f:
+    return Template(f.read())
 
 def RunStaticUnittest(unittest_class_name, input_tensors: list, body_code_stmts: list):
   example_dim = 2
@@ -238,3 +243,51 @@ class Test{unittest_class_name}(unittest.TestCase):
 if __name__ == '__main__':
     unittest.main()
 """
+
+
+
+class InitMinGetter:
+  def bool():
+    return "False" 
+
+  def bfloat16():
+    return "-0.5" 
+
+  def float16():
+    return "-0.5" 
+
+  def float32():
+    return "-0.5" 
+
+  def float64():
+    return "-0.5"
+
+  def int32():
+    return "0"
+
+  def int64():
+    return "0"
+
+
+class InitMaxGetter:
+  def bool():
+    return "False" 
+
+  def bfloat16():
+    return "0.5" 
+
+  def float16():
+    return "0.5" 
+
+  def float32():
+    return "0.5" 
+
+  def float64():
+    return "0.5" 
+    
+  def int32():
+    return "1"
+
+  def int64():
+    return "1"
+

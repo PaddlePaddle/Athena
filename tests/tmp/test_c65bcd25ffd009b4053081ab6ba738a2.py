@@ -1,4 +1,3 @@
-
 import os
 os.environ['FLAGS_cinn_new_group_scheduler'] = '1'
 os.environ['FLAGS_group_schedule_tiling_first'] = '1'
@@ -12,7 +11,7 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-    return 1
+    return 2
 
 def GetPaddleDebugNumAllowedOps():
     try:
@@ -32,16 +31,22 @@ class FusionOp(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, while_0):
-        
+    def forward(self, arg_0):
+    
         if FastReturn(0):
-          return while_0
-        
+            return arg_0
+    
         # (1x-1x768xf32) <- (1x-1x768xf32)
-        exp_0 = paddle.exp(while_0)
-        
+        exp_0 = paddle.exp(arg_0)
+    
+        if FastReturn(1):
+            return arg_0, exp_0
+    
+        # (1x-1x768xf32) <- (1x-1x768xf32, 1x-1x768xf32)
+        subtract_0 = exp_0 - arg_0
+    
         # () <- (1x-1x768xf32)
-        return exp_0
+        return subtract_0
 
 
 class TestFusionOp(unittest.TestCase):
@@ -51,7 +56,7 @@ class TestFusionOp(unittest.TestCase):
 
     def prepare_data(self):
         self.inputs = [
-          paddle.uniform([1, 2, 768], dtype='float32', min=-0.5, max=0.5)
+            paddle.uniform([1], dtype='float32', min=-0.5, max=0.5),
         ]
         for input in self.inputs:
           input.stop_gradient = True
@@ -59,7 +64,7 @@ class TestFusionOp(unittest.TestCase):
     def apply_to_static(self, net, use_cinn):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
-          paddle.static.InputSpec(shape=[1, None, 768], dtype='float32')
+            paddle.static.InputSpec(shape=[1], dtype='float32'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(
