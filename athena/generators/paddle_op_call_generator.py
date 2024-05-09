@@ -183,6 +183,9 @@ class PaddleOpCallGenerator:
   def pd_op_reshape(self, op, x, shape):
     return f"{self.m}.reshape({x.name}, {shape.name}), None"
 
+  def pd_op_unsqueeze(self, op, x, axis):
+    return f"{self.m}.unsqueeze({x.name}, {axis.name})"
+
   def cinn_op_generate_shape(self, op, *inputs):
     generator = GSOutputDimGenerator(
       self.m, inputs,
