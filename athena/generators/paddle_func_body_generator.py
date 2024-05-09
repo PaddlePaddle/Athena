@@ -38,13 +38,14 @@ class PaddleFuncBodyGenerator:
     return block_func(self, *free_vars)()
 
   def __call__(self, op, *input_tensors, **kwargs):
+    if len(kwargs) > 0:
+      return getattr(self, op.GetPyVarName())(op, *input_tensors, **kwargs)
     signature = f"(%s) <- (%s)" % (
       ", ".join(t.GetShortStr() for t in op.output_types),
       ", ".join(t.GetShortStr() for t in op.input_types)
     )
     comment = f"# {signature}"
     op = ConvertToPaddleOp(op)
-    assert len(kwargs) == 0
     local_input_tensors = [
       self.tensor_converter.ConvertToLocalTensor(input_tensor)
       for input_tensor in input_tensors
