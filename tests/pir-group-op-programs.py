@@ -2,61 +2,61 @@ class PirProgram_0:
 
   def __init__(self):
 
-    self.data_201 = self.Op("pd_op.data", 201, input_types=[], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), name=self.a_str("x"), shape=self.a_intarray(1, -1, 768), stop_gradient=self.a_array(self.a_bool(False))))
+    self.data_201 = self.Op("pd_op.data", 201, input_types=[], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), name=self.a_str("x"), shape=self.a_intarray(1, -1, 768), stop_gradient=self.a_array(self.a_bool(False)), __operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)))))
 
-    self.full_202 = self.Op("pd_op.full", 202, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("0"), stop_gradient=self.a_array(self.a_bool(True))))
+    self.full_202 = self.Op("pd_op.full", 202, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("0"), stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(0)])))))
 
-    self.reduce_sum_233 = self.Op("cinn_op.reduce_sum", 233, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([], self.t_f32())], attrs=dict(keep_dim=self.a_bool(False), stop_gradient=self.a_array(self.a_bool(False)), dim=self.a_array()))
+    self.reduce_sum_233 = self.Op("cinn_op.reduce_sum", 233, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([], self.t_f32())], attrs=dict(keep_dim=self.a_bool(False), stop_gradient=self.a_array(self.a_bool(False)), dim=self.a_array(), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([], None)))))
 
-    self.full_212 = self.Op("pd_op.full", 212, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("0"), stop_gradient=self.a_array(self.a_bool(True))))
+    self.full_212 = self.Op("pd_op.full", 212, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("0"), stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(0)])))))
 
-    self.greater_than_213 = self.Op("pd_op.greater_than", 213, input_types=[self.t_dtensor([], self.t_f32()), self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False))))
+    self.greater_than_213 = self.Op("pd_op.greater_than", 213, input_types=[self.t_dtensor([], self.t_f32()), self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(0)]))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))))
 
-    self.full_214 = self.Op("pd_op.full", 214, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("1"), stop_gradient=self.a_array(self.a_bool(True))))
+    self.full_214 = self.Op("pd_op.full", 214, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("1"), stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(1)])))))
 
-    self.less_than_215 = self.Op("pd_op.less_than", 215, input_types=[self.t_dtensor([1], self.t_f32()), self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True))))
+    self.less_than_215 = self.Op("pd_op.less_than", 215, input_types=[self.t_dtensor([1], self.t_f32()), self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(0)])), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(1)]))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))))
 
-    self.logical_and_216 = self.Op("pd_op.logical_and", 216, input_types=[self.t_dtensor([1], self.t_bool()), self.t_dtensor([1], self.t_bool())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True))))
+    self.logical_and_216 = self.Op("pd_op.logical_and", 216, input_types=[self.t_dtensor([1], self.t_bool()), self.t_dtensor([1], self.t_bool())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))))
 
-    self.yield_237 = self.Op("cf.yield", 237, input_types=[self.t_dtensor([1], self.t_bool())], output_types=[], attrs=dict())
+    self.yield_237 = self.Op("cf.yield", 237, input_types=[self.t_dtensor([1], self.t_bool())], output_types=[], attrs=dict(__operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None))), __results_symbols_signature__=self.a_array()))
 
-    self.group_236 = self.Op("cinn_op.group", 236, input_types=[], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(), block_positional_arg_names=[[[]]], block_keyword_arg_names=[[{}]])
+    self.group_236 = self.Op("cinn_op.group", 236, input_types=[], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(__operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))), block_positional_arg_names=[[[]]], block_keyword_arg_names=[[{}]])
 
-    self.exp_218 = self.Op("pd_op.exp", 218, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False))))
+    self.exp_218 = self.Op("pd_op.exp", 218, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)))))
 
-    self.subtract_219 = self.Op("pd_op.subtract", 219, input_types=[self.t_dtensor([1, -1, 768], self.t_f32()), self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False))))
+    self.subtract_219 = self.Op("pd_op.subtract", 219, input_types=[self.t_dtensor([1, -1, 768], self.t_f32()), self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)))))
 
-    self.reduce_sum_235 = self.Op("cinn_op.reduce_sum", 235, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([], self.t_f32())], attrs=dict(keep_dim=self.a_bool(False), stop_gradient=self.a_array(self.a_bool(False)), dim=self.a_array()))
+    self.reduce_sum_235 = self.Op("cinn_op.reduce_sum", 235, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([], self.t_f32())], attrs=dict(keep_dim=self.a_bool(False), stop_gradient=self.a_array(self.a_bool(False)), dim=self.a_array(), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([], None)))))
 
-    self.scale_234 = self.Op("cinn_op.scale", 234, input_types=[self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(bias=self.a_f32("1"), stop_gradient=self.a_array(self.a_bool(True)), bias_after_scale=self.a_bool(True), scale=self.a_f32("1")))
+    self.scale_234 = self.Op("cinn_op.scale", 234, input_types=[self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(bias=self.a_f32("1"), stop_gradient=self.a_array(self.a_bool(True)), bias_after_scale=self.a_bool(True), scale=self.a_f32("1"), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))))
 
-    self.full_224 = self.Op("pd_op.full", 224, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("0"), stop_gradient=self.a_array(self.a_bool(True))))
+    self.full_224 = self.Op("pd_op.full", 224, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("0"), stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(0)])))))
 
-    self.greater_than_225 = self.Op("pd_op.greater_than", 225, input_types=[self.t_dtensor([], self.t_f32()), self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False))))
+    self.greater_than_225 = self.Op("pd_op.greater_than", 225, input_types=[self.t_dtensor([], self.t_f32()), self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(0)]))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))))
 
-    self.full_226 = self.Op("pd_op.full", 226, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("1"), stop_gradient=self.a_array(self.a_bool(True))))
+    self.full_226 = self.Op("pd_op.full", 226, input_types=[], output_types=[self.t_dtensor([1], self.t_f32())], attrs=dict(dtype=self.a_dtype("float32"), place=self.a_place("undefined", 0), shape=self.a_intarray(1), value=self.a_f32("1"), stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(1)])))))
 
-    self.less_than_227 = self.Op("pd_op.less_than", 227, input_types=[self.t_dtensor([1], self.t_f32()), self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True))))
+    self.less_than_227 = self.Op("pd_op.less_than", 227, input_types=[self.t_dtensor([1], self.t_f32()), self.t_dtensor([1], self.t_f32())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(1)]))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))))
 
-    self.logical_and_228 = self.Op("pd_op.logical_and", 228, input_types=[self.t_dtensor([1], self.t_bool()), self.t_dtensor([1], self.t_bool())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True))))
+    self.logical_and_228 = self.Op("pd_op.logical_and", 228, input_types=[self.t_dtensor([1], self.t_bool()), self.t_dtensor([1], self.t_bool())], output_types=[self.t_dtensor([1], self.t_bool())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))))
 
-    self.yield_241 = self.Op("cf.yield", 241, input_types=[self.t_dtensor([1, -1, 768], self.t_f32()), self.t_dtensor([1], self.t_f32()), self.t_dtensor([1], self.t_bool())], output_types=[], attrs=dict())
+    self.yield_241 = self.Op("cf.yield", 241, input_types=[self.t_dtensor([1, -1, 768], self.t_f32()), self.t_dtensor([1], self.t_f32()), self.t_dtensor([1], self.t_bool())], output_types=[], attrs=dict(__operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None))), __results_symbols_signature__=self.a_array()))
 
-    self.group_240 = self.Op("cinn_op.group", 240, input_types=[], output_types=[self.t_dtensor([1, -1, 768], self.t_f32()), self.t_dtensor([1], self.t_f32()), self.t_dtensor([1], self.t_bool())], attrs=dict(), block_positional_arg_names=[[[]]], block_keyword_arg_names=[[{}]])
+    self.group_240 = self.Op("cinn_op.group", 240, input_types=[], output_types=[self.t_dtensor([1, -1, 768], self.t_f32()), self.t_dtensor([1], self.t_f32()), self.t_dtensor([1], self.t_bool())], attrs=dict(__operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)))), block_positional_arg_names=[[[]]], block_keyword_arg_names=[[{}]])
 
-    self.yield_229 = self.Op("cf.yield", 229, input_types=[self.t_dtensor([1], self.t_bool()), self.t_dtensor([1], self.t_f32()), self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[], attrs=dict())
+    self.yield_229 = self.Op("cf.yield", 229, input_types=[self.t_dtensor([1], self.t_bool()), self.t_dtensor([1], self.t_f32()), self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[], attrs=dict(__operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array()))
 
-    self.while_217 = self.Op("pd_op.while", 217, input_types=[self.t_dtensor([1], self.t_bool()), self.t_dtensor([1], self.t_f32()), self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([1], self.t_f32()), self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True), self.a_bool(False))), block_positional_arg_names=[[["arg_1225560416", "arg_1225560272"]]], block_keyword_arg_names=[[{}]])
+    self.while_217 = self.Op("pd_op.while", 217, input_types=[self.t_dtensor([1], self.t_bool()), self.t_dtensor([1], self.t_f32()), self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([1], self.t_f32()), self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(stop_gradient=self.a_array(self.a_bool(True), self.a_bool(False)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], [self.s_int64(0)])), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1)], None)), self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)))), block_positional_arg_names=[[["arg_1212682608", "arg_1212717648"]]], block_keyword_arg_names=[[{}]])
 
-    self.exp_230 = self.Op("pd_op.exp", 230, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False))))
+    self.exp_230 = self.Op("pd_op.exp", 230, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(stop_gradient=self.a_array(self.a_bool(False)), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)))))
 
-    self.yield_239 = self.Op("cf.yield", 239, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[], attrs=dict())
+    self.yield_239 = self.Op("cf.yield", 239, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[], attrs=dict(__operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array()))
 
-    self.group_238 = self.Op("cinn_op.group", 238, input_types=[], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(), block_positional_arg_names=[[[]]], block_keyword_arg_names=[[{}]])
+    self.group_238 = self.Op("cinn_op.group", 238, input_types=[], output_types=[self.t_dtensor([1, -1, 768], self.t_f32())], attrs=dict(__operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None)))), block_positional_arg_names=[[[]]], block_keyword_arg_names=[[{}]])
 
-    self.shadow_output_231 = self.Op("builtin.shadow_output", 231, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[], attrs=dict(output_name=self.a_str("output_1")))
+    self.shadow_output_231 = self.Op("builtin.shadow_output", 231, input_types=[self.t_dtensor([1, -1, 768], self.t_f32())], output_types=[], attrs=dict(output_name=self.a_str("output_0"), __operands_symbols_signature__=self.a_array(self.a_symbol(self.s_tensor_shape_or_data([self.s_int64(1), self.s_str("S0"), self.s_int64(768)], None))), __results_symbols_signature__=self.a_array()))
 
-    self.module_199 = self.Op("builtin.module", 199, input_types=[], output_types=[], attrs=dict(program=self.a_pointer("0x48b86270")), block_positional_arg_names=[[[]]], block_keyword_arg_names=[[{}]])
+    self.module_199 = self.Op("builtin.module", 199, input_types=[], output_types=[], attrs=dict(program=self.a_pointer("0x4890b720"), __operands_symbols_signature__=self.a_array(), __results_symbols_signature__=self.a_array()), block_positional_arg_names=[[[]]], block_keyword_arg_names=[[{}]])
 
     
 
@@ -82,17 +82,17 @@ class PirProgram_0:
 
     
 
-  def group_240_block00(self, call, arg_1225560272, arg_1225560416):
+  def group_240_block00(self, call, arg_1212717648, arg_1212682608):
 
     def ret_lambda():
 
-      exp_2180, = call(self.exp_218, arg_1225560272)
+      exp_2180, = call(self.exp_218, arg_1212717648)
 
-      subtract_2190, = call(self.subtract_219, exp_2180, arg_1225560272)
+      subtract_2190, = call(self.subtract_219, exp_2180, arg_1212717648)
 
       reduce_sum_2350, = call(self.reduce_sum_235, subtract_2190)
 
-      scale_2340, = call(self.scale_234, arg_1225560416)
+      scale_2340, = call(self.scale_234, arg_1212682608)
 
       full_2240, = call(self.full_224)
 
@@ -112,9 +112,9 @@ class PirProgram_0:
 
   def while_217_block00(self, call):
 
-    def ret_lambda(arg_1225560416, arg_1225560272):
+    def ret_lambda(arg_1212682608, arg_1212717648):
 
-      group_2400, group_2401, group_2402, = call(self.group_240, blocks=[[(self.group_240_block00, arg_1225560272, arg_1225560416)]])
+      group_2400, group_2401, group_2402, = call(self.group_240, blocks=[[(self.group_240_block00, arg_1212717648, arg_1212682608)]])
 
       return call(self.yield_229, group_2402, group_2401, group_2400)
 

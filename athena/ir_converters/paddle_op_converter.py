@@ -11,4 +11,6 @@ def ConvertToPaddleOp(op):
     block_positional_arg_names=op.block_positional_arg_names,
     block_keyword_arg_names=op.block_keyword_arg_names,
     base_op=op,
+    __operands_symbols_signature__=op.__operands_symbols_signature__,
+    __results_symbols_signature__=op.__results_symbols_signature__,
   )

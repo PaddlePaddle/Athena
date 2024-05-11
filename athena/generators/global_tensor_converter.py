@@ -6,13 +6,14 @@ class GlobalTensorConverter:
     self.local_name_prefix2seq_no = {}
     self.global_name2local_tensor = {}
 
-  def ConvertToLocalTensor(self, tensor):
+  def ConvertToLocalTensor(self, tensor, prefix = None):
     if tensor.name not in self.global_name2local_tensor:
-      prefix = tensor.local_name_prefix
+      prefix = tensor.local_name_prefix if prefix is None else prefix
       self.global_name2local_tensor[tensor.name] = Tensor(
         local_name_prefix=prefix,
         name=f"{prefix}_{self._GetLocalNameSeqNo(prefix)}",
-        type=tensor.type
+        type=tensor.type,
+        dim_exprs=tensor.dim_exprs
       )
     return self.global_name2local_tensor[tensor.name]
 

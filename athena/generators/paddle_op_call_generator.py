@@ -89,7 +89,7 @@ class GSOutputDimGenerator:
     return getattr(self, method_name)(inputs, tensor_idx, dim_idx)
 
   def _ShapeSymbolBinding(self, inputs, tensor_idx, dim_idx):
-    return f"{self.m}.shape({inputs[tensor_idx].name})[{dim_idx}]"
+    return f"{inputs[tensor_idx].name}.shape[{dim_idx}]"
 
   def _DataSymbolBinding(self, inputs, tensor_idx, dim_idx):
     return f"{inputs[tensor_idx].name}[{dim_idx}]"

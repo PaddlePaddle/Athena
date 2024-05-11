@@ -4,21 +4,28 @@ from collections import namedtuple
 from athena.generators.paddle_func_body_generator import (
   PaddleFuncBodyGenerator
 )
+import athena.ir.ir_symbol as ir_symbol
+from athena.util.dim_exprs_extractor import DimExprsExtractor
+from athena.util.dim_instance_generator import DimInstanceGenerator
 
 class PaddleUnittestGenerator:
 
   def __init__(self, unittest_class_name, func, body_generator = None):
     self.unittest_class_name = unittest_class_name
+    self.func = func
     self.body_generator = body_generator
     if self.body_generator is None:
       self.body_generator = PaddleFuncBodyGenerator(func)
 
   def Generate(self, input_tensors):
+    all_dim_exprs = DimExprsExtractor().Extract(self.func, input_tensors)
+    dim_instance_generator = DimInstanceGenerator(all_dim_exprs)
     input_tensors, body_code_stmts = self.body_generator.Generate(input_tensors)
     return RenderTemplate(
       unittest_class_name=self.unittest_class_name,
       input_tensors=input_tensors,
-      body_code_stmts=body_code_stmts
+      body_code_stmts=body_code_stmts,
+      dim_instance_generator=dim_instance_generator
     )
 
 
@@ -46,14 +53,24 @@ InputSpecDesc = namedtuple("InputSpecDesc", [
   "dtype",
 ])
 
-def RenderTemplate(unittest_class_name, input_tensors: list, body_code_stmts: list):
+
+def RenderTemplate(
+  unittest_class_name,
+  input_tensors: list,
+  body_code_stmts: list,
+  dim_instance_generator: DimInstanceGenerator
+):
   template = _GetTemplate("template_paddle_unittest.py")
   input_arg_names = [
     input_tensor.name for input_tensor in input_tensors
   ]
-  def GetShape(tensor):
-    example_dim = 2
-    return [(dim if dim >= 0 else example_dim) for dim in tensor.shape]
+  def GetShapeInstanceFromDimExprs(tensor):
+    if type(tensor.dim_exprs) is not ir_symbol.TensorShapeOrDataDimExprs:
+      return []
+    return [
+      dim_instance_generator.GetDimInstance(dim_expr)
+      for dim_expr in tensor.dim_exprs.shape
+    ]
   def GetData(tensor):
     return None
   def GetBigType(tensor):
@@ -62,7 +79,7 @@ def RenderTemplate(unittest_class_name, input_tensors: list, body_code_stmts: li
     return type2bigger_type[tensor.dtype]
   input_tensor_descs = [
     InputTensorMeta(
-      shape=GetShape(input_tensor),
+      shape=GetShapeInstanceFromDimExprs(input_tensor),
       dtype=input_tensor.dtype,
       big_dtype=GetBigType(input_tensor),
       data=GetData(input_tensor),

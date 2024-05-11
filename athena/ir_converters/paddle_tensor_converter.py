@@ -15,7 +15,8 @@ class PaddleTensorConverter:
       type=ir_type.DenseTensorType(
         tensor.shape,
         paddle_type_converter.ConvertTypeToString(tensor.dtype)
-      )
+      ),
+      dim_exprs=tensor.dim_exprs
     )
 
   @classmethod
@@ -31,5 +32,6 @@ class PaddleTensorConverter:
           )
           for t in tensor.type.value
         ]
-      )
+      ),
+      dim_exprs=tensor.dim_exprs
     )

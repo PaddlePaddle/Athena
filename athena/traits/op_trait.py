@@ -8,6 +8,13 @@ class OpTrait:
     block_positional_arg_names = None, block_keyword_arg_names = None
   ):
     return ir_op.Op(
-      name, op_id, input_types, output_types, attrs,
-      block_positional_arg_names, block_keyword_arg_names
+      name=name,
+      op_id=op_id,
+      input_types=input_types,
+      output_types=output_types,
+      attrs=attrs,
+      block_positional_arg_names=block_positional_arg_names,
+      block_keyword_arg_names=block_keyword_arg_names,
+      __operands_symbols_signature__=attrs['__operands_symbols_signature__'],
+      __results_symbols_signature__=attrs['__results_symbols_signature__'],
     )

@@ -14,6 +14,8 @@ class Op:
   block_keyword_arg_names: list = field(
     default_factory=lambda:[[]]
   )
+  __operands_symbols_signature__: "ArrayAttribute" = None
+  __results_symbols_signature__: "ArrayAttribute" = None
 
   def GetResults(self):
     return [self.GetResult(i) for i in range(len(self.output_types))]
@@ -23,6 +25,7 @@ class Op:
       local_name_prefix=self.GetNameSuffix(),
       name=self.GetResultTensorName(i),
       type=self.output_types[i],
+      dim_exprs=self.__results_symbols_signature__.value[i].value
     )
   
   def GetResultTensorName(self, i):

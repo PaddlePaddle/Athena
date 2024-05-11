@@ -11,13 +11,32 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-    return 7
+    return 7 # number-of-ops
 
 def GetPaddleDebugNumAllowedOps():
     try:
         return int(os.getenv('PADDLE_DEBUG_NUM_ALLOWED_OPS'))
     except:
         return None
+
+def GetEnvVarEnableJit():
+    enable_jit = os.getenv('PADDLE_DEBUG_ENABLE_JIT')
+    return enable_jit not in {
+        "0",
+        "False",
+        "false",
+        "OFF",
+    }
+
+def GetEnvVarEnableCinn():
+    enable_cinn = os.getenv('PADDLE_DEBUG_ENABLE_CINN')
+    return enable_cinn not in {
+        "0",
+        "False",
+        "false",
+        "OFF",
+    }
+
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
@@ -36,46 +55,62 @@ class FusionOp(paddle.nn.Layer):
         if FastReturn(0):
             return fusion_0, fusion_1
 
-        # (xf32) <- (1x-1x768xf32)
+        #  type: (xf32) <- (1x-1x768xf32)
+        # shape: ([]) <- ([1, S0, 768])
+        #  data: (None) <- (None)
         reduce_sum_0 = paddle.sum(fusion_0, keepdim=False, axis=[])
 
         if FastReturn(1):
             return fusion_1, reduce_sum_0
 
-        # (1xf32) <- ()
+        #  type: (1xf32) <- ()
+        # shape: ([1]) <- ()
+        #  data: ([0]) <- ()
         full_0 = paddle.full(shape=[1], dtype='float32', fill_value=0)
 
         if FastReturn(2):
             return fusion_1, reduce_sum_0, full_0
 
-        # (1xf32) <- (xf32)
+        #  type: (1xf32) <- (xf32)
+        # shape: ([1]) <- ([])
+        #  data: (None) <- (None)
         broadcast_0 = paddle.broadcast_to(reduce_sum_0, [1])
 
         if FastReturn(3):
             return fusion_1, full_0, broadcast_0
 
-        # (1xb) <- (1xf32, 1xf32)
+        #  type: (1xb) <- (1xf32, 1xf32)
+        # shape: ([1]) <- ([1], [1])
+        #  data: (None) <- (None, [0])
         greater_than_0 = broadcast_0 > full_0
 
         if FastReturn(4):
             return fusion_1, greater_than_0
 
-        # (1xf32) <- ()
+        #  type: (1xf32) <- ()
+        # shape: ([1]) <- ()
+        #  data: ([1]) <- ()
         full_1 = paddle.full(shape=[1], dtype='float32', fill_value=1)
 
         if FastReturn(5):
             return fusion_1, greater_than_0, full_1
 
-        # (1xb) <- (1xf32, 1xf32)
+        #  type: (1xb) <- (1xf32, 1xf32)
+        # shape: ([1]) <- ([1], [1])
+        #  data: (None) <- (None, [1])
         less_than_0 = fusion_1 < full_1
 
         if FastReturn(6):
             return greater_than_0, less_than_0
 
-        # (1xb) <- (1xb, 1xb)
+        #  type: (1xb) <- (1xb, 1xb)
+        # shape: ([1]) <- ([1], [1])
+        #  data: (None) <- (None, None)
         logical_and_0 = paddle.logical_and(greater_than_0, less_than_0)
 
-        # () <- (1xb)
+        #  type: () <- (1xb)
+        # shape: () <- ([1])
+        #  data: () <- (None)
         return logical_and_0
 
 
@@ -109,13 +144,14 @@ class TestFusionOp(unittest.TestCase):
     def train(self, use_cinn):
         net = FusionOp()
         net.eval()
-        net = self.apply_to_static(net, use_cinn)
+        if GetEnvVarEnableJit():
+            net = self.apply_to_static(net, use_cinn)
         out = net(*self.inputs)
         return out
 
     def test_train(self):
         dy_outs = self.train(use_cinn=False)
-        cinn_outs = self.train(use_cinn=True)
+        cinn_outs = self.train(use_cinn=GetEnvVarEnableCinn())
 
         for cinn_out, dy_out in zip(cinn_outs, dy_outs):
           if type(cinn_out) is list and type(dy_out) is list:

@@ -3,6 +3,8 @@ import athena.ir.ir_symbol as ir_symbol
 class SymbolTrait:
 
   def s_int64(self, value):
+    if value < 0:
+      return self.s_negative(self.s_int64(-value))
     return ir_symbol.Int64(value)
 
   def s_str(self, value):

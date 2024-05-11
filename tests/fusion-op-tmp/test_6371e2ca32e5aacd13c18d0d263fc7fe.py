@@ -11,13 +11,32 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-    return 1
+    return 2 # number-of-ops
 
 def GetPaddleDebugNumAllowedOps():
     try:
         return int(os.getenv('PADDLE_DEBUG_NUM_ALLOWED_OPS'))
     except:
         return None
+
+def GetEnvVarEnableJit():
+    enable_jit = os.getenv('PADDLE_DEBUG_ENABLE_JIT')
+    return enable_jit not in {
+        "0",
+        "False",
+        "false",
+        "OFF",
+    }
+
+def GetEnvVarEnableCinn():
+    enable_cinn = os.getenv('PADDLE_DEBUG_ENABLE_CINN')
+    return enable_cinn not in {
+        "0",
+        "False",
+        "false",
+        "OFF",
+    }
+
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
@@ -36,11 +55,23 @@ class FusionOp(paddle.nn.Layer):
         if FastReturn(0):
             return arg_0
 
-        # (1xf32) <- (1xf32)
-        scale_0 = arg_0 * 1 + 1
+        #  type: (1x-1x768xf32) <- (1x-1x768xf32)
+        # shape: ([1, S0, 768]) <- ([1, S0, 768])
+        #  data: (None) <- (None)
+        exp_0 = paddle.exp(arg_0)
 
-        # () <- (1xf32)
-        return scale_0
+        if FastReturn(1):
+            return arg_0, exp_0
+
+        #  type: (1x-1x768xf32) <- (1x-1x768xf32, 1x-1x768xf32)
+        # shape: ([1, S0, 768]) <- ([1, S0, 768], [1, S0, 768])
+        #  data: (None) <- (None, None)
+        subtract_0 = exp_0 - arg_0
+
+        #  type: () <- (1x-1x768xf32)
+        # shape: () <- ([1, S0, 768])
+        #  data: () <- (None)
+        return subtract_0
 
 
 class TestFusionOp(unittest.TestCase):
@@ -50,7 +81,7 @@ class TestFusionOp(unittest.TestCase):
 
     def prepare_data(self):
         self.inputs = [
-            paddle.zeros([1], dtype='bool'),
+            paddle.uniform([1], dtype='float32', min=-0.5, max=0.5),
         ]
         for input in self.inputs:
           input.stop_gradient = True
@@ -58,7 +89,7 @@ class TestFusionOp(unittest.TestCase):
     def apply_to_static(self, net, use_cinn):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
-            paddle.static.InputSpec(shape=[1], dtype='bool'),
+            paddle.static.InputSpec(shape=[1], dtype='float32'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(
@@ -71,13 +102,14 @@ class TestFusionOp(unittest.TestCase):
     def train(self, use_cinn):
         net = FusionOp()
         net.eval()
-        net = self.apply_to_static(net, use_cinn)
+        if GetEnvVarEnableJit():
+            net = self.apply_to_static(net, use_cinn)
         out = net(*self.inputs)
         return out
 
     def test_train(self):
         dy_outs = self.train(use_cinn=False)
-        cinn_outs = self.train(use_cinn=True)
+        cinn_outs = self.train(use_cinn=GetEnvVarEnableCinn())
 
         for cinn_out, dy_out in zip(cinn_outs, dy_outs):
           if type(cinn_out) is list and type(dy_out) is list:

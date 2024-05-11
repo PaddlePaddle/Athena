@@ -8,8 +8,13 @@ from athena.util.tensor_topo import GetOpId2TensorNamesUsedByDownstream
 
 @dataclass
 class PyCodeStmt:
-  comment: str
   pycode: str
+  inputs_type_strs: List[str]
+  outputs_type_strs: List[str]
+  inputs_shape_symbol_strs: List[str]
+  outputs_shape_symbol_strs: List[str]
+  inputs_data_symbol_strs: List[str]
+  outputs_data_symbol_strs: List[str]
   tensors_used_by_downstream: List[str]
 
 class PaddleFuncBodyGenerator:
@@ -40,11 +45,24 @@ class PaddleFuncBodyGenerator:
   def __call__(self, op, *input_tensors, **kwargs):
     if len(kwargs) > 0:
       return getattr(self, op.GetPyVarName())(op, *input_tensors, **kwargs)
-    signature = f"(%s) <- (%s)" % (
-      ", ".join(t.GetShortStr() for t in op.output_types),
-      ", ".join(t.GetShortStr() for t in op.input_types)
-    )
-    comment = f"# {signature}"
+    outputs_type_strs = [t.GetShortStr() for t in op.output_types]
+    inputs_type_strs = [t.GetShortStr() for t in op.input_types]
+    outputs_shape_symbol_strs = [
+      s.value.GetShapeShortStr()
+      for s in op.__results_symbols_signature__.value
+    ]
+    inputs_shape_symbol_strs = [
+      s.value.GetShapeShortStr()
+      for s in op.__operands_symbols_signature__.value
+    ]
+    outputs_data_symbol_strs = [
+      s.value.GetDataShortStr()
+      for s in op.__results_symbols_signature__.value
+    ]
+    inputs_data_symbol_strs = [
+      s.value.GetDataShortStr()
+      for s in op.__operands_symbols_signature__.value
+    ]
     op = ConvertToPaddleOp(op)
     local_input_tensors = [
       self.tensor_converter.ConvertToLocalTensor(input_tensor)
@@ -63,7 +81,12 @@ class PaddleFuncBodyGenerator:
     else:
       pycode = f"{local_output_unpack_str} = {local_op_call_expr}"
     self.stmts.append(PyCodeStmt(
-      comment=comment,
+      inputs_type_strs=inputs_type_strs,
+      outputs_type_strs=outputs_type_strs,
+      inputs_shape_symbol_strs=inputs_shape_symbol_strs,
+      outputs_shape_symbol_strs=outputs_shape_symbol_strs,
+      inputs_data_symbol_strs=inputs_data_symbol_strs,
+      outputs_data_symbol_strs=outputs_data_symbol_strs,
       pycode=pycode,
       tensors_used_by_downstream=self.op_id2used_by_downstream[op.op_id],
     ))

@@ -12,6 +12,7 @@ class CinnUnittestGenerator:
         local_name_prefix="arg",
         name=arg_name,
         type=inputs[i].type,
+        dim_exprs=inputs[i].dim_exprs
       )
     return block_func(self, *free_vars)(**{
       arg_name:GetArgTensor(i, arg_name) for i, arg_name in enumerate(arg_names)
