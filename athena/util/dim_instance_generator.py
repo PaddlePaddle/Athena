@@ -1,18 +1,24 @@
 import athena.ir.ir_symbol as ir_symbol
 from athena.util.dim_expr_evaluator import DimExprEvaluator
+from athena.util.global_dim_expr_converter import GlobalDimExprConverter
 
 class DimInstanceGenerator:
 
   def __init__(self, dim_exprs):
-    self.dim_exprs = dim_exprs
-    symbol_binding_value = self.SearchValidSymbolBindingValue(dim_exprs)
+    self.global_dim_expr_converter = GlobalDimExprConverter(dim_exprs)
+    local_dim_exprs = [
+      self.global_dim_expr_converter.GetLocalDimExpr(dim_expr)
+      for dim_expr in dim_exprs
+    ]
+    symbol_binding_value = self.SearchValidSymbolBindingValue(local_dim_exprs)
     self.dim_expr_evaluator = DimExprEvaluator(
       lambda name: symbol_binding_value
     )
     self.example_dim = -1
 
   def GetDimInstance(self, dim_expr):
-    dim_instance = self.dim_expr_evaluator.Eval(dim_expr)
+    local_dim_expr = self.global_dim_expr_converter.GetLocalDimExpr(dim_expr)
+    dim_instance = self.dim_expr_evaluator.Eval(local_dim_expr)
     return dim_instance if dim_instance > 0 else self.example_dim
 
   def SearchValidSymbolBindingValue(self, dim_exprs):

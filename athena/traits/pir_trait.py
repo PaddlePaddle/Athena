@@ -3,8 +3,14 @@ from athena.traits.type_trait import TypeTrait
 from athena.traits.attr_trait import AttrTrait
 from athena.traits.symbol_trait import SymbolTrait
 from athena.traits.op_trait import OpTrait
+from athena.traits.constaint_trait import ConstraintAttr
 import importlib
 import inspect
 
-class PirTrait(ArgsTrait, OpTrait, TypeTrait, AttrTrait, SymbolTrait):
+class PirTrait(ArgsTrait,
+               OpTrait,
+               TypeTrait,
+               AttrTrait,
+               SymbolTrait,
+               ConstraintAttr):
   pass

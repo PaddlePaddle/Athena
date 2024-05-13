@@ -9,6 +9,9 @@ class DimExpr:
   def __hash__(self):
     return id(DimExpr)
 
+  def IsConstant(self):
+    return False
+
 @dataclass
 class Int64(DimExpr):
   value: int
@@ -18,6 +21,10 @@ class Int64(DimExpr):
 
   def __hash__(self):
     return hash_combine(id(type(self)), hash(self.value))
+
+  def IsConstant(self):
+    return True
+
 
 @dataclass
 class String(DimExpr):
@@ -41,6 +48,10 @@ class Negative(DimExpr):
     return hash_combine(id(type(self)), hash(self.operand))
 
 
+  def IsConstant(self):
+    return self.operand.IsConstant()
+
+
 @dataclass
 class Reciprocal(DimExpr):
   operand: DimExpr
@@ -50,6 +61,9 @@ class Reciprocal(DimExpr):
 
   def __hash__(self):
     return hash_combine(id(type(self)), hash(self.operand))
+
+  def IsConstant(self):
+    return self.operand.IsConstant()
 
 
 @dataclass
