@@ -223,7 +223,7 @@ class PaddleOpCallGenerator:
     return f"{self.m}.reshape({x.name}, {shape.name}), None"
 
   def pd_op_unsqueeze(self, op, x, axis):
-    return f"{self.m}.unsqueeze({x.name}, {axis.name})"
+    return f"{self.m}.unsqueeze({x.name}, {axis.name}), None"
 
   def pd_op_sin(self, op, x):
     return f"{self.m}.sin({x.name})"

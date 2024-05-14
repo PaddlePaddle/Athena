@@ -39,11 +39,11 @@ type2bigger_type = dict(
   int64="int64",
 )
 
-InputTensorMeta = namedtuple("InputTensorMeta", [
+InputTensorDesc = namedtuple("InputTensorDesc", [
   "shape",
   "dtype",
   "big_dtype",
-  "data", # `big_dtype` must be "dim"
+  "data",
   "min",
   "max",
 ])
@@ -71,18 +71,23 @@ def RenderTemplate(
       dim_instance_generator.GetDimInstance(dim_expr)
       for dim_expr in tensor.dim_exprs.shape
     ]
-  def GetData(tensor):
-    return None
+  def GetDataInstanceFromDimExprs(tensor):
+    if type(tensor.dim_exprs) is not ir_symbol.TensorShapeOrDataDimExprs:
+      return None
+    if tensor.dim_exprs.data is None:
+      return None
+    return [
+      dim_instance_generator.GetDimInstance(dim_expr)
+      for dim_expr in tensor.dim_exprs.data
+    ]
   def GetBigType(tensor):
-    if GetData(tensor) is not None:
-      return "dim"
     return type2bigger_type[tensor.dtype]
   input_tensor_descs = [
-    InputTensorMeta(
+    InputTensorDesc(
       shape=GetShapeInstanceFromDimExprs(input_tensor),
       dtype=input_tensor.dtype,
       big_dtype=GetBigType(input_tensor),
-      data=GetData(input_tensor),
+      data=GetDataInstanceFromDimExprs(input_tensor),
       min=getattr(InitMinGetter, input_tensor.dtype)(),
       max=getattr(InitMaxGetter, input_tensor.dtype)(),
     )
