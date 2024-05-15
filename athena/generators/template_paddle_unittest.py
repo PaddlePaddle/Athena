@@ -123,10 +123,38 @@ class Test{{unittest_class_name}}(unittest.TestCase):
 
     def assert_all_close(self, x, y):
         if (hasattr(x, "numpy") and hasattr(y, "numpy")):
-            np.testing.assert_allclose(x.numpy(), y.numpy(), atol=1e-6)
+            x_numpy = x.numpy()
+            y_numpy = y.numpy()
+            assert x_numpy.dtype == y_numpy.dtype
+            if IsInteger(x_numpy.dtype):
+                np.testing.assert_equal(x_numpy, y_numpy)
+            else:
+                tol = GetTolerance(x_numpy.dtype)
+                np.testing.assert_allclose(x_numpy, y_numpy, atol=tol, rtol=tol)
         else:
             assert x == y
 
+def GetTolerance(dtype):
+    if dtype == np.float16:
+        return GetFloat16Tolerance()
+    if dtype == np.float32:
+        return GetFloat32Tolerance()
+    return 1e-6
+
+def GetFloat16Tolerance():
+    try:
+        return float(os.getenv('PADDLE_DEBUG_FLOAT16_TOL'))
+    except:
+        return 1e-3
+
+def GetFloat32Tolerance():
+    try:
+        return float(os.getenv('PADDLE_DEBUG_FLOAT32_TOL'))
+    except:
+        return 1e-6
+
+def IsInteger(dtype):
+    return np.dtype(dtype).char in np.typecodes['AllInteger']
 
 if __name__ == '__main__':
     unittest.main()
