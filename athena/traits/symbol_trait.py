@@ -31,6 +31,9 @@ class SymbolTrait:
   def s_broadcast(self, *args):
     return ir_symbol.Broadcast(args)
 
+  def s_null(self):
+    return ir_symbol.NullShapeOrDataDimExprs()
+
   def s_tensor_shape_or_data(self, shape, data):
     return ir_symbol.TensorShapeOrDataDimExprs(shape=shape, data=data)
 

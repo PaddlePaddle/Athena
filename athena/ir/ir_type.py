@@ -2,6 +2,12 @@ from dataclasses import dataclass
 from typing import List
 
 @dataclass
+class NullType:
+  
+  def GetShortStr(self):
+    return "None"
+
+@dataclass
 class VectorType:
   value: List["Type"]
 

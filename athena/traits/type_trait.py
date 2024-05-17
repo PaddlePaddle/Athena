@@ -2,6 +2,9 @@ import athena.ir.ir_type as ir_type
 
 class TypeTrait:
 
+  def t_null(self):
+    return ir_type.NullType()
+
   def t_vec(self, *args):
     return ir_type.VectorType(args)
 

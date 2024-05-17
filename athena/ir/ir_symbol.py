@@ -161,6 +161,16 @@ class ShapeOrDataDimExprs:
   pass
 
 @dataclass
+class NullShapeOrDataDimExprs(ShapeOrDataDimExprs):
+  pass
+
+  def GetShapeShortStr(self):
+    return "None"
+
+  def GetDataShortStr(self):
+    return "None"
+
+@dataclass
 class TensorShapeOrDataDimExprs(ShapeOrDataDimExprs):
   shape: List[DimExpr]
   data: Optional[List[DimExpr]]

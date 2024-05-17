@@ -33,6 +33,9 @@ class DimExprsExtractor:
     method_name = f"_Get{type(shape_or_data).__name__}"
     yield from getattr(self, method_name)(shape_or_data)
 
+  def _GetNullShapeOrDataDimExprs(self, shape_or_data):
+    yield from []
+
   def _GetTensorShapeOrDataDimExprs(self, shape_or_data):
     yield shape_or_data
 
