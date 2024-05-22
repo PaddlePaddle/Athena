@@ -61,16 +61,21 @@ class PaddleFuncBodyGenerator:
     return input_local_tensors, self.stmts, output_local_tensors
 
   def __call__(self, op, *input_tensors, **kwargs):
-    if hasattr(self, op.GetPyVarName()): 
-      return getattr(self, op.GetPyVarName())(op, *input_tensors, **kwargs)
-    return self.CollectPyCodeStmt(self.GetStmtPyCode, op, *input_tensors, **kwargs)
+    op_py_varname = op.GetPyVarName()
+    if hasattr(self, op_py_varname):
+      return getattr(self, op_py_varname)(op, *input_tensors, **kwargs)
+    stmts_method_name = f"get_stmts_{op_py_varname}"
+    get_stmts = (
+      getattr(self, stmts_method_name)
+      if hasattr(self, stmts_method_name)
+      else self.GetStmtPyCode
+    )
+    return self.CollectPyCodeStmt(get_stmts, op, *input_tensors, **kwargs)
 
-  def builtin_split(self, op, x):
-    def GetStmtPyCode(local_output_tensor_names, op, x):
-      output_unpack_str = ", ".join(local_output_tensor_names)
-      pycode = f"{output_unpack_str}, = {x.name}"
-      return [IndentedPyCode(pycode=pycode, num_tabs=0)]
-    return self.CollectPyCodeStmt(GetStmtPyCode, op, x)
+  def get_stmts_builtin_split(self, local_output_tensor_names, op, x):
+    output_unpack_str = ", ".join(local_output_tensor_names)
+    pycode = f"{output_unpack_str}, = {x.name}"
+    return [IndentedPyCode(pycode=pycode, num_tabs=0)]
 
   def CollectPyCodeStmt(self, GetStmtPyCode, op, *input_tensors, **kwargs):
     assert len(kwargs) == 0
