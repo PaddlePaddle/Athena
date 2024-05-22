@@ -106,8 +106,8 @@ class PaddleFuncBodyGenerator:
       self.tensor_converter.ConvertToLocalTensor(output_tensor).name
       for output_tensor in op.GetResults()
     ]
-    pycode = GetStmtPyCode(local_output_tensor_names, op, *input_local_tensors)
-    if pycode is None:
+    stmts = GetStmtPyCode(local_output_tensor_names, op, *input_local_tensors)
+    if len(stmts) == 0:
       return op.GetResults()
     self.stmts.append(PyCodeStmt(
       op_name=op.name,
@@ -117,7 +117,7 @@ class PaddleFuncBodyGenerator:
       outputs_shape_symbol_strs=outputs_shape_symbol_strs,
       inputs_data_symbol_strs=inputs_data_symbol_strs,
       outputs_data_symbol_strs=outputs_data_symbol_strs,
-      pycode=pycode,
+      pycode=stmts,
       tensors_used_by_downstream=self.op_id2used_by_downstream[op.op_id],
     ))
     return op.GetResults()
@@ -126,7 +126,7 @@ class PaddleFuncBodyGenerator:
     local_output_unpack_str = ", ".join(local_output_tensor_names)
     local_op_call_expr = self.op_call_generator.GenerateOpCall(op, *input_local_tensors)
     if local_op_call_expr is None:
-      pycode = None 
+      return [] 
     elif len(local_output_tensor_names) == 0:
       pycode = f"{local_op_call_expr}"
     else:
