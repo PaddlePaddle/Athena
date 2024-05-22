@@ -35,12 +35,12 @@ class Op:
     return f"{self.GetNameSuffix()}_{self.op_id}"
 
   def GetPyVarName(self):
-    return "_".join(self._GetValidPyVarNameComponents())
+    return "_".join(self.GetValidPyVarNameComponents())
 
   def GetNameSuffix(self):
-    return self._GetValidPyVarNameComponents()[-1]
+    return self.GetValidPyVarNameComponents()[-1]
 
-  def _GetValidPyVarNameComponents(self):
+  def GetValidPyVarNameComponents(self):
     def IsValidVarChar(ch):
       return (
         (ch >= 'a' and ch <= 'z')

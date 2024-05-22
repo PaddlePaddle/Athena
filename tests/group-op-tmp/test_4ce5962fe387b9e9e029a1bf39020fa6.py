@@ -11,13 +11,32 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-    return 1
+    return 1 # number-of-ops
 
 def GetPaddleDebugNumAllowedOps():
     try:
         return int(os.getenv('PADDLE_DEBUG_NUM_ALLOWED_OPS'))
     except:
         return None
+
+def GetEnvVarEnableJit():
+    enable_jit = os.getenv('PADDLE_DEBUG_ENABLE_JIT')
+    return enable_jit not in {
+        "0",
+        "False",
+        "false",
+        "OFF",
+    }
+
+def GetEnvVarEnableCinn():
+    enable_cinn = os.getenv('PADDLE_DEBUG_ENABLE_CINN')
+    return enable_cinn not in {
+        "0",
+        "False",
+        "false",
+        "OFF",
+    }
+
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
@@ -36,10 +55,15 @@ class GroupOp(paddle.nn.Layer):
         if FastReturn(0):
             return while_0
 
-        # (1x-1x768xf32) <- (1x-1x768xf32)
+        #  type: (1x-1x768xf32) <- (1x-1x768xf32)
+        # shape: ([1, S0, 768]) <- ([1, S0, 768])
+        #  data: (None) <- (None)
         exp_0 = paddle.exp(while_0)
 
-        # () <- (1x-1x768xf32)
+        #  type: () <- (1x-1x768xf32)
+        # shape: () <- ([1, S0, 768])
+        #  data: () <- (None)
+        None
         return exp_0
 
 
@@ -71,13 +95,14 @@ class TestGroupOp(unittest.TestCase):
     def train(self, use_cinn):
         net = GroupOp()
         net.eval()
-        net = self.apply_to_static(net, use_cinn)
+        if GetEnvVarEnableJit():
+            net = self.apply_to_static(net, use_cinn)
         out = net(*self.inputs)
         return out
 
     def test_train(self):
         dy_outs = self.train(use_cinn=False)
-        cinn_outs = self.train(use_cinn=True)
+        cinn_outs = self.train(use_cinn=GetEnvVarEnableCinn())
 
         for cinn_out, dy_out in zip(cinn_outs, dy_outs):
           if type(cinn_out) is list and type(dy_out) is list:
@@ -88,10 +113,38 @@ class TestGroupOp(unittest.TestCase):
 
     def assert_all_close(self, x, y):
         if (hasattr(x, "numpy") and hasattr(y, "numpy")):
-            np.testing.assert_allclose(x.numpy(), y.numpy(), atol=1e-6)
+            x_numpy = x.numpy()
+            y_numpy = y.numpy()
+            assert x_numpy.dtype == y_numpy.dtype
+            if IsInteger(x_numpy.dtype):
+                np.testing.assert_equal(x_numpy, y_numpy)
+            else:
+                tol = GetTolerance(x_numpy.dtype)
+                np.testing.assert_allclose(x_numpy, y_numpy, atol=tol, rtol=tol)
         else:
             assert x == y
 
+def GetTolerance(dtype):
+    if dtype == np.float16:
+        return GetFloat16Tolerance()
+    if dtype == np.float32:
+        return GetFloat32Tolerance()
+    return 1e-6
+
+def GetFloat16Tolerance():
+    try:
+        return float(os.getenv('PADDLE_DEBUG_FLOAT16_TOL'))
+    except:
+        return 1e-3
+
+def GetFloat32Tolerance():
+    try:
+        return float(os.getenv('PADDLE_DEBUG_FLOAT32_TOL'))
+    except:
+        return 1e-6
+
+def IsInteger(dtype):
+    return np.dtype(dtype).char in np.typecodes['AllInteger']
 
 if __name__ == '__main__':
     unittest.main()

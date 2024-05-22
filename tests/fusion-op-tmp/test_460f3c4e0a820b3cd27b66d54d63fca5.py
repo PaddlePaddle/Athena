@@ -50,20 +50,21 @@ class FusionOp(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, arg_0):
+    def forward(self, while_0):
 
         if FastReturn(0):
-            return arg_0
+            return while_0
 
-        #  type: (1xf32) <- (1xf32)
-        # shape: ([1]) <- ([1])
+        #  type: (1x-1x768xf32) <- (1x-1x768xf32)
+        # shape: ([1, S0, 768]) <- ([1, S0, 768])
         #  data: (None) <- (None)
-        scale_0 = arg_0 * 1 + 1
+        exp_0 = paddle.exp(while_0)
 
-        #  type: () <- (1xf32)
-        # shape: () <- ([1])
+        #  type: () <- (1x-1x768xf32)
+        # shape: () <- ([1, S0, 768])
         #  data: () <- (None)
-        return scale_0
+        None
+        return exp_0
 
 
 class TestFusionOp(unittest.TestCase):
@@ -73,7 +74,7 @@ class TestFusionOp(unittest.TestCase):
 
     def prepare_data(self):
         self.inputs = [
-            paddle.zeros([1], dtype='bool'),
+            paddle.uniform([1, 2, 768], dtype='float32', min=-0.5, max=0.5),
         ]
         for input in self.inputs:
           input.stop_gradient = True
@@ -81,7 +82,7 @@ class TestFusionOp(unittest.TestCase):
     def apply_to_static(self, net, use_cinn):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
-            paddle.static.InputSpec(shape=[1], dtype='bool'),
+            paddle.static.InputSpec(shape=[1, None, 768], dtype='float32'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(
@@ -112,10 +113,38 @@ class TestFusionOp(unittest.TestCase):
 
     def assert_all_close(self, x, y):
         if (hasattr(x, "numpy") and hasattr(y, "numpy")):
-            np.testing.assert_allclose(x.numpy(), y.numpy(), atol=1e-6)
+            x_numpy = x.numpy()
+            y_numpy = y.numpy()
+            assert x_numpy.dtype == y_numpy.dtype
+            if IsInteger(x_numpy.dtype):
+                np.testing.assert_equal(x_numpy, y_numpy)
+            else:
+                tol = GetTolerance(x_numpy.dtype)
+                np.testing.assert_allclose(x_numpy, y_numpy, atol=tol, rtol=tol)
         else:
             assert x == y
 
+def GetTolerance(dtype):
+    if dtype == np.float16:
+        return GetFloat16Tolerance()
+    if dtype == np.float32:
+        return GetFloat32Tolerance()
+    return 1e-6
+
+def GetFloat16Tolerance():
+    try:
+        return float(os.getenv('PADDLE_DEBUG_FLOAT16_TOL'))
+    except:
+        return 1e-3
+
+def GetFloat32Tolerance():
+    try:
+        return float(os.getenv('PADDLE_DEBUG_FLOAT32_TOL'))
+    except:
+        return 1e-6
+
+def IsInteger(dtype):
+    return np.dtype(dtype).char in np.typecodes['AllInteger']
 
 if __name__ == '__main__':
     unittest.main()

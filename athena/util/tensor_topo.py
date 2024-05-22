@@ -10,14 +10,15 @@ class OpInpOutNameSignature:
 
 def GetOpId2TensorNamesUsedByDownstream(
   func,
-  input_tensors,
+  free_vars,
+  args,
   get_local_name,
 ) -> Dict[int, List[str]]:
   in_out_name_sig_extractor = OpInOutNameSignatureExtractor(get_local_name)
-  in_out_names_sigs = in_out_name_sig_extractor.Extract(func, input_tensors)
+  in_out_names_sigs = in_out_name_sig_extractor.Extract(func, free_vars, args)
   tensor_name2idx = _GetTensorName2Idx(
     in_out_names_sigs,
-    input_tensors,
+    free_vars,
     get_local_name,
   )
   op_id2used = {}
@@ -61,8 +62,8 @@ class OpInOutNameSignatureExtractor:
     self.in_out_names_sigs = []
     self.get_local_name = get_local_name
   
-  def Extract(self, func, input_tensors):
-    func(self, *input_tensors)
+  def Extract(self, func, free_vars, args):
+    func(self, *free_vars)(*args)
     return self.in_out_names_sigs
 
   def __call__(self, op, *input_tensors, **kwargs):

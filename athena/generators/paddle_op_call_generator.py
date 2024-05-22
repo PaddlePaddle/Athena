@@ -106,16 +106,50 @@ class PaddleOpCallGenerator:
     self.m = module_name
 
   def GenerateOpCall(self, op, *inputs):
-    return getattr(self, op.GetPyVarName())(op, *inputs)
+    method_name = op.GetPyVarName()
+    if hasattr(self, method_name):
+      return getattr(self, method_name)(op, *inputs)
+    return self._GenerateOpCall(self.m, op, *inputs)
+
+  def GenerateCOpsCall(self, op, *inputs):
+    return self._GenerateOpCall(f"{self.m}._C_ops", op, *inputs)
+
+  def _GenerateOpCall(self, m, op, *inputs):
+    input_names = ", ".join([t.name for t in inputs])
+    attr_str = ", ".join([
+      f"{attr_name}={attr_value}"
+      for attr_name, attr_value in self.GetOpAttrs(op)
+    ])
+    if len(attr_str) > 0:
+      attr_str = ", " + attr_str
+    return f"{m}.{self.PaddleMethodName(op)}({input_names}{attr_str})"
+
+  def GetOpAttrs(self, op):
+    ignored_attr_names = {
+      "__operands_symbols_signature__",
+      "__results_symbols_signature__",
+      "stop_gradient",
+      "place",
+    }
+    for attr_name, attr_value in op.attrs.items():
+      if attr_name in ignored_attr_names:
+        continue
+      yield attr_name, attr_value
+
+  def PaddleMethodName(self, op):
+    return op.GetValidPyVarNameComponents()[-1]
+
+  def pd_op_sigmoid(self, op, x):
+    return f"{self.m}.nn.functional.sigmoid({x.name})"
+
+  def pd_op_set_value_(self, op, x, starts, ends, steps):
+    return f"{self.m}._C_ops.set_value_({x.name}, {starts.name}, {ends.name}, {steps.name}, {op.attrs['axes']}, {op.attrs['decrease_axes']}, {op.attrs['none_axes']}, {op.attrs['shape']}, {op.attrs['values']})"
 
   def pd_op_gather_nd(self, op, x, index):
     return f"{self.m}.gather_nd({x.name}, {index.name})"
 
   def pd_op_subtract(self, op, x, y):
     return f"{x.name} - {y.name}"
-
-  def cf_yield(self, op, *inputs):
-    return "return " + ", ".join([input.name for input in inputs])
 
   def pd_op_exp(self, op, x):
     return f"{self.m}.exp({x.name})"
@@ -129,7 +163,10 @@ class PaddleOpCallGenerator:
   def pd_op_full(self, op):
     return f"{self.m}.full(shape={op.attrs['shape']}, dtype='{op.attrs['dtype']}', fill_value={op.attrs['value']})"
 
-  def builtin_shadow_output(self, op):
+  def cf_yield(self, op, *inputs):
+    return None
+
+  def builtin_shadow_output(self, op, *inputs):
     return None
 
   def builtin_parameter(self, op):
@@ -157,19 +194,18 @@ class PaddleOpCallGenerator:
   def pd_op_split(self, op, x, y, z):
     return f"{self.m}.split({x.name}, {y.name}, {z.name})"
 
-  def builtin_split(self, op, x):
-    return f"{x.name}"
-
   def pd_op_full_int_array(self, op):
-    values = ", ".join(map(str, op.attrs['value']))
-    return f"[{values}]"
+    return op.attrs['value']
 
   def cinn_op_yield_store(self, op, x):
-    return f"{x.name}"
+    return f"{x.name},"
 
   def cinn_op_concat(self, op, *inputs):
     operands = ", ".join([input.name for input in inputs])
     return f"{self.m}.concat([{operands}], axis={op.attrs['axis']})"
+
+  def pd_op_slice(self, op, x, starts, ends):
+    return f"{self.m}.slice({x.name}, axes={op.attrs['axes']}, starts={starts.name}, ends={ends.name})"
 
   def cinn_op_slice(self, op, x):
     return f"{self.m}.slice({x.name}, axes={op.attrs['axes']}, starts={op.attrs['starts']}, ends={op.attrs['ends']})"

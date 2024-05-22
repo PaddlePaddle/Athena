@@ -6,8 +6,8 @@ class DimExprsExtractor:
   def __init__(self):
     self.dim_exprs = set()
   
-  def Extract(self, func, input_tensors):
-    func(self, *input_tensors)
+  def Extract(self, func, free_vars, args):
+    func(self, *free_vars)(*args)
     return self.dim_exprs
 
   def __call__(self, op, *input_tensors, **kwargs):

@@ -17,7 +17,9 @@ class GroupOpUnittestGenerator(CinnUnittestGenerator):
     unittest_class_name = "GroupOp"
     unittest_generator = PaddleUnittestGenerator(
       unittest_class_name=unittest_class_name,
-      func=lambda *args: block_func(*args)()
+      func=block_func
     )
-    self.op_name2unittest[op.GetUniqueName()] = unittest_generator.Generate(free_vars)
+    self.op_name2unittest[op.GetUniqueName()] = unittest_generator.Generate(
+      free_vars, args=()
+    )
     return op.GetResults()

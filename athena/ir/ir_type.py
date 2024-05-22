@@ -12,7 +12,7 @@ class VectorType:
   value: List["Type"]
 
   def GetShortStr(self):
-    return "[%s]"%s(", ".join([e.GetShortStr() for e in self.value]))
+    return "[%s]"%(", ".join([e.GetShortStr() for e in self.value]))
 
 @dataclass
 class DenseTensorType:

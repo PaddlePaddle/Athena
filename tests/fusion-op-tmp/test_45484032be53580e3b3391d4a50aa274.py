@@ -11,7 +11,7 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-    return 7 # number-of-ops
+    return 2 # number-of-ops
 
 def GetPaddleDebugNumAllowedOps():
     try:
@@ -50,68 +50,29 @@ class FusionOp(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, fusion_0, fusion_1):
+    def forward(self, arg_0):
 
         if FastReturn(0):
-            return fusion_0, fusion_1
+            return arg_0
 
-        #  type: (xf32) <- (1x-1x768xf32)
-        # shape: ([]) <- ([1, S0, 768])
+        #  type: (1x-1x768xf32) <- (1x-1x768xf32)
+        # shape: ([1, S0, 768]) <- ([1, S0, 768])
         #  data: (None) <- (None)
-        reduce_sum_0 = paddle.sum(fusion_0, keepdim=False, axis=[])
+        exp_0 = paddle.exp(arg_0)
 
         if FastReturn(1):
-            return fusion_1, reduce_sum_0
+            return arg_0, exp_0
 
-        #  type: (1xf32) <- ()
-        # shape: ([1]) <- ()
-        #  data: ([0]) <- ()
-        full_0 = paddle.full(shape=[1], dtype='float32', fill_value=0)
-
-        if FastReturn(2):
-            return fusion_1, reduce_sum_0, full_0
-
-        #  type: (1xf32) <- (xf32)
-        # shape: ([1]) <- ([])
-        #  data: (None) <- (None)
-        broadcast_0 = paddle.broadcast_to(reduce_sum_0, [1])
-
-        if FastReturn(3):
-            return fusion_1, full_0, broadcast_0
-
-        #  type: (1xb) <- (1xf32, 1xf32)
-        # shape: ([1]) <- ([1], [1])
-        #  data: (None) <- (None, [0])
-        greater_than_0 = broadcast_0 > full_0
-
-        if FastReturn(4):
-            return fusion_1, greater_than_0
-
-        #  type: (1xf32) <- ()
-        # shape: ([1]) <- ()
-        #  data: ([1]) <- ()
-        full_1 = paddle.full(shape=[1], dtype='float32', fill_value=1)
-
-        if FastReturn(5):
-            return fusion_1, greater_than_0, full_1
-
-        #  type: (1xb) <- (1xf32, 1xf32)
-        # shape: ([1]) <- ([1], [1])
-        #  data: (None) <- (None, [1])
-        less_than_0 = fusion_1 < full_1
-
-        if FastReturn(6):
-            return greater_than_0, less_than_0
-
-        #  type: (1xb) <- (1xb, 1xb)
-        # shape: ([1]) <- ([1], [1])
+        #  type: (1x-1x768xf32) <- (1x-1x768xf32, 1x-1x768xf32)
+        # shape: ([1, S0, 768]) <- ([1, S0, 768], [1, S0, 768])
         #  data: (None) <- (None, None)
-        logical_and_0 = paddle.logical_and(greater_than_0, less_than_0)
+        subtract_0 = exp_0 - arg_0
 
-        #  type: () <- (1xb)
-        # shape: () <- ([1])
+        #  type: () <- (1x-1x768xf32)
+        # shape: () <- ([1, S0, 768])
         #  data: () <- (None)
-        return logical_and_0
+        None
+        return subtract_0
 
 
 class TestFusionOp(unittest.TestCase):
@@ -121,8 +82,7 @@ class TestFusionOp(unittest.TestCase):
 
     def prepare_data(self):
         self.inputs = [
-            paddle.uniform([1, 2, 768], dtype='float32', min=-0.5, max=0.5),
-            paddle.uniform([1], dtype='float32', min=-0.5, max=0.5),
+            paddle.to_tensor([-1], dtype='float32').reshape([1]),
         ]
         for input in self.inputs:
           input.stop_gradient = True
@@ -130,7 +90,6 @@ class TestFusionOp(unittest.TestCase):
     def apply_to_static(self, net, use_cinn):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
-            paddle.static.InputSpec(shape=[1, None, 768], dtype='float32'),
             paddle.static.InputSpec(shape=[1], dtype='float32'),
         ]
         build_strategy.build_cinn_pass = use_cinn
@@ -162,10 +121,38 @@ class TestFusionOp(unittest.TestCase):
 
     def assert_all_close(self, x, y):
         if (hasattr(x, "numpy") and hasattr(y, "numpy")):
-            np.testing.assert_allclose(x.numpy(), y.numpy(), atol=1e-6)
+            x_numpy = x.numpy()
+            y_numpy = y.numpy()
+            assert x_numpy.dtype == y_numpy.dtype
+            if IsInteger(x_numpy.dtype):
+                np.testing.assert_equal(x_numpy, y_numpy)
+            else:
+                tol = GetTolerance(x_numpy.dtype)
+                np.testing.assert_allclose(x_numpy, y_numpy, atol=tol, rtol=tol)
         else:
             assert x == y
 
+def GetTolerance(dtype):
+    if dtype == np.float16:
+        return GetFloat16Tolerance()
+    if dtype == np.float32:
+        return GetFloat32Tolerance()
+    return 1e-6
+
+def GetFloat16Tolerance():
+    try:
+        return float(os.getenv('PADDLE_DEBUG_FLOAT16_TOL'))
+    except:
+        return 1e-3
+
+def GetFloat32Tolerance():
+    try:
+        return float(os.getenv('PADDLE_DEBUG_FLOAT32_TOL'))
+    except:
+        return 1e-6
+
+def IsInteger(dtype):
+    return np.dtype(dtype).char in np.typecodes['AllInteger']
 
 if __name__ == '__main__':
     unittest.main()

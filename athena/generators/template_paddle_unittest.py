@@ -61,8 +61,15 @@ class {{unittest_class_name}}(paddle.nn.Layer):
         #  type: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
         # shape: ({{stmt.outputs_shape_symbol_strs|join(", ")}}) <- ({{stmt.inputs_shape_symbol_strs|join(", ")}})
         #  data: ({{stmt.outputs_data_symbol_strs|join(", ")}}) <- ({{stmt.inputs_data_symbol_strs|join(", ")}})
-        {{stmt.pycode}}
+        {%- for pycode in stmt.pycode %}
+        {%- if pycode.num_tabs == 0 %}
+        {{pycode.pycode}}
+        {%- else %}
+        raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
+        {%- endif %}
+        {%- endfor %}
     {%- endfor %}
+        return {{output_arg_names | join(", ")}}
 
 
 class Test{{unittest_class_name}}(unittest.TestCase):
