@@ -26,7 +26,7 @@ InputSpecDesc = namedtuple("InputSpecDesc", [
   "dtype",
 ])
 
-class BlockUnittestGenerator:
+class ModuleOpUnittestGenerator:
 
   def __init__(self, ir_program):
     self.name = type(ir_program).__name__

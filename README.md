@@ -1,30 +1,37 @@
 # Athena
 
-# How to generate pir python files?
+## How to generate pir python files?
 
 Set environment variable `FLAGS_logging_pir_py_code_dir` to an existed logging directory before running a paddle program. Once the paddle program finished, there are some pir python files generated under the logging directory.
 
-The file named `fusion_op_programs.py` in the logging directory collects all pir programs after pass `ApplyDivideGroupOpToFusionOpPass`, which is more important than other files usually.
+The orignal pir programs passed into ApplyCinnPass are collected in log file `original_programs.py` in the logging directory
+
+The file named `group_op_programs.py` in the logging directory collects all pir programs after pass `ApplyBuildGroupOpPass`
+
+The file named `fusion_op_programs.py` in the logging directory collects all pir programs after pass `ApplyDivideGroupOpToFusionOpPass`
 
 ## How to generate unittest files?
 
-cd to tests directory
-```bash
-cd tests
-```
+### module op unittests
 
-run demo case
 ```bash
-sh test-generate-fusion-op-unittests.sh
+python3 -m athena.module_op_unittests /path/to/original_programs.py --output_dir=/path/to/output/dir
 ```
+examples see `tests/test-generate-module-op-unittests.sh`
 
-You will get unittest files in ./tmp directory
+### group op unittests
+
+```bash
+python3 -m athena.group_op_unittests /path/to/group_op_programs.py --output_dir=/path/to/output/dir
 ```
-λ ~/workspace/Athena ls tests/tmp/
-test_18dff13414273d546da42f50b425db63.py  test_d273ad8cf9c5c9c0ba433db9058c4193.py
-test_90a61f91bf628c33b3e398b98f44cf26.py  test_d824ead229f44cc871666a9eda1d1881.py
-test_91ef0107e1a5c12d9aff298098ccec28.py
+examples see `tests/test-generate-group-op-unittests.sh`
+
+### fusion op unittests
+
+```bash
+python3 -m athena.fusion_op_unittests /path/to/fusion_op_programs.py --output_dir=/path/to/output/dir
 ```
+examples see `tests/test-generate-fusion-op-unittests.sh`
 
 ## How to bisearch bug op for a unittest?
 

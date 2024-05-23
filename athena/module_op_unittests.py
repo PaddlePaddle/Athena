@@ -1,6 +1,6 @@
 from athena.util.load_pir_py_classes import GetProgramClasses
-from athena.generators.block_unittest_generator import (
-  BlockUnittestGenerator
+from athena.generators.module_op_unittest_generator import (
+  ModuleOpUnittestGenerator
 )
 import sys
 from absl import app
@@ -36,7 +36,7 @@ def GetOutputUnittests(input_file_path):
   get_name = MakeNameGetter()
   for cls in GetProgramClasses(input_file_path):
     ir_program = cls()
-    generator = BlockUnittestGenerator(ir_program)
+    generator = ModuleOpUnittestGenerator(ir_program)
     name, unittest = generator.Generate()
     yield name, unittest
 
