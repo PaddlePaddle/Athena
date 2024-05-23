@@ -135,7 +135,12 @@ class OpInOutNameSignatureExtractor:
   def __call__(self, op, input_tensors, kwargs):
     if hasattr(self, op.GetPyVarName()):
       return getattr(self, op.GetPyVarName())(op, *input_tensors, **kwargs)
-    assert len(kwargs) == 0
+    free_vars = []
+    if len(kwargs) > 0:
+      for region in kwargs['blocks']:
+        for block_tuple in region:
+          free_vars = [*free_vars, *block_tuple[1:]]
+    input_tensors = [*free_vars, *input_tensors]
     in_names = [self.get_local_name(tensor) for tensor in input_tensors]
     out_names = [self.get_local_name(tensor) for tensor in op.GetResults()]
     self.in_out_names_sigs.append(OpInpOutNameSignature(

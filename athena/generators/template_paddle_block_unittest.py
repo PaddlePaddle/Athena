@@ -37,23 +37,23 @@ def GetPaddleDebugNumAllowedOps():
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
-if type(paddle_debug_num_allowed_blocks) is not int:
-    def EarlyReturn(block_idx, op_idx):
-        return False
 
-elif type(paddle_debug_num_allowed_ops) is not int:
+if type(paddle_debug_num_allowed_ops) is not int:
     def EarlyReturn(block_idx, op_idx):
-        return False
-        
+        return False      
 else:
+    type_paddle_debug_num_allowed_blocks_is_int = (
+        type(paddle_debug_num_allowed_blocks) is int
+    )
     def EarlyReturn(block_idx, op_idx):
-        if block_idx + 1 != paddle_debug_num_allowed_blocks:
-            return False
+        if type_paddle_debug_num_allowed_blocks_is_int:
+            if block_idx + 1 != paddle_debug_num_allowed_blocks:
+                return False
         return op_idx >= paddle_debug_num_allowed_ops
 
 
-{% macro block_input_shape_global_var_name(block, block_idx, input_idx) -%}
-{{block.block_name}}_{{block_idx}}_{{input_idx}}_shape
+{% macro block_input_shape_global_var_name(block, input_idx) -%}
+{{block.block_name}}_in{{input_idx}}_shape
 {%- endmacro %}
 
 class BlockEntries:
@@ -86,8 +86,10 @@ class BlockEntries:
 {%- set block_idx = loop.index0 %}
 {%- for shape, _ in block.input_spec_shape_dtypes %}
 {%- set input_idx = loop.index0 %}
+{%- if not block.is_entry_block %}
 # {{shape}}
-{{block_input_shape_global_var_name(block, block_idx, input_idx)}} = None
+{{block_input_shape_global_var_name(block, input_idx)}} = None
+{%- endif %}
 {%- endfor %}
 {%- endfor %}
 
@@ -98,8 +100,8 @@ class BlockShapesExtractor:
     def {{block.block_name}}(self, {{block.input_arg_names | join(", ")}}):
     {%- for arg_name in block.input_arg_names %}
     {%- set input_idx = loop.index0 %}
-        global {{block_input_shape_global_var_name(block, block_idx, input_idx)}}
-        {{block_input_shape_global_var_name(block, block_idx, input_idx)}} = {{arg_name}}.shape
+        global {{block_input_shape_global_var_name(block, input_idx)}}
+        {{block_input_shape_global_var_name(block, input_idx)}} = {{arg_name}}.shape
     {%- endfor %}
         
     {%- for stmt in block.stmts %}
@@ -127,13 +129,13 @@ class BlockShapesExtractor:
     {%- if block.is_entry_block -%}
         {{block.input_tensor_descs[input_idx].shape}}
     {%- else -%}
-        {{block_input_shape_global_var_name(block, block_idx, input_idx)}}
+        {{block_input_shape_global_var_name(block, input_idx)}}
     {%- endif -%}
 {%- endmacro %}
 
 
 {% macro get_input_tensor_instance(block, block_idx, input_idx) -%}
-{%- set shape = block.input_tensor_descs[input_idx].shape -%}
+{%- set shape = get_input_shape_instance(block, block_idx, input_idx) -%}
 {%- set dtype = block.input_tensor_descs[input_idx].dtype -%}
 {%- set big_dtype = block.input_tensor_descs[input_idx].big_dtype -%}
 {%- set data = block.input_tensor_descs[input_idx].data -%}
@@ -277,9 +279,9 @@ if ShouldTestBlock({{block_idx}}):
 
         def {{stmt.op_unique_local_name}}(self, {{stmt.op_func_in_out_names_signature.in_names | join(", ")}}):
         
-                # EarlyReturn({{block_idx}}, {{op_idx}})
+            # EarlyReturn({{block_idx}}, {{op_idx}})
 
-                # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+            # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
 
             {%- for pycode in stmt.pycode %}
             {%- if pycode.num_tabs == 0 %}

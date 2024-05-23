@@ -5,7 +5,7 @@ from athena.generators.global_tensor_converter import GlobalTensorConverter
 from athena.util.name_generator import NameGenerator
 from dataclasses import dataclass
 from typing import List, Union
-
+from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.tensor_topo import (
   GetOpId2TensorNamesUsedByMeAndDownstream,
   GetOpId2OpPipeInOutNamesSignature,
@@ -88,11 +88,36 @@ class PaddleFuncBodyGenerator:
 
   def get_stmts_builtin_split(self, local_output_tensor_names, op, x):
     output_unpack_str = ", ".join(local_output_tensor_names)
-    pycode = f"{output_unpack_str}, = {x.name}"
-    return [IndentedPyCode(pycode=pycode, num_tabs=0)]
+    return [self.Indent0(f"{output_unpack_str}, = {x.name}")]
+
+  def get_stmts_pd_op_while(
+    self,
+    local_output_tensor_names,
+    op,
+    *local_input_tensors,
+    **kwargs,
+  ):
+    block_func, *free_vars = kwargs["blocks"][0][0]
+    cond, *args = local_input_tensors
+    free_vars = [self.tensor_converter.ConvertToLocalTensor(t) for t in free_vars]
+    output_unpack_str = ", ".join(local_output_tensor_names)
+    input_var_str = ", ".join(t.name for t in local_input_tensors)
+    block_name = BlockNameGenerator().Generate(op, region_idx=0, block_idx=0)
+    block_args_str = ", ".join(t.name for t in [*free_vars, *local_input_tensors])
+    arg_str = ", ".join(t.name for t in args)
+    return [
+      self.Indent0(f"while {cond.name}:"),
+      self.Indent1(f"{input_var_str}, = self.{block_name}({block_args_str})"),
+      self.Indent0(f"{output_unpack_str}, = {arg_str},"),
+    ]
+
+  def Indent0(self, pycode):
+    return IndentedPyCode(pycode=pycode, num_tabs=0)
+
+  def Indent1(self, pycode):
+    return IndentedPyCode(pycode=pycode, num_tabs=1)
 
   def CollectPyCodeStmt(self, GetStmtPyCode, op, *input_tensors, **kwargs):
-    assert len(kwargs) == 0
     outputs_type_strs = [t.GetShortStr() for t in op.output_types]
     inputs_type_strs = [t.GetShortStr() for t in op.input_types]
     outputs_shape_symbol_strs = [
@@ -120,7 +145,7 @@ class PaddleFuncBodyGenerator:
       self.tensor_converter.ConvertToLocalTensor(output_tensor).name
       for output_tensor in op.GetResults()
     ]
-    stmts = GetStmtPyCode(local_output_tensor_names, op, *input_local_tensors)
+    stmts = GetStmtPyCode(local_output_tensor_names, op, *input_local_tensors, **kwargs)
     if len(stmts) == 0:
       return op.GetResults()
     self.stmts.append(PyCodeStmt(
@@ -141,7 +166,8 @@ class PaddleFuncBodyGenerator:
     ))
     return op.GetResults()
 
-  def GetStmtPyCode(self, local_output_tensor_names, op, *input_local_tensors):
+  def GetStmtPyCode(self, local_output_tensor_names, op, *input_local_tensors, **kwargs):
+    assert len(kwargs) == 0
     local_output_unpack_str = ", ".join(local_output_tensor_names)
     local_op_call_expr = self.op_call_generator.GenerateOpCall(op, *input_local_tensors)
     if local_op_call_expr is None:
