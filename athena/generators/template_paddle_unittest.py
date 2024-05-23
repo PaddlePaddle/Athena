@@ -11,7 +11,7 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-    return {{stmts[:-1] | length}} # number-of-ops
+    return {{(stmts | length)}} # number-of-ops
 
 def GetPaddleDebugNumAllowedOps():
     try:
@@ -40,36 +40,59 @@ def GetEnvVarEnableCinn():
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
-def FastReturn(i):
-    return (
-        type(paddle_debug_num_allowed_ops) is int
-        and i >= paddle_debug_num_allowed_ops
-    )
+if type(paddle_debug_num_allowed_ops) is not int:
+    def EarlyReturn(i):
+        return False
+else:
+    def EarlyReturn(i):
+        return i >= paddle_debug_num_allowed_ops
 
 class {{unittest_class_name}}(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
     def forward(self, {{ input_arg_names | join(", ") }}):
-    {%- for i, stmt in stmts %}
-    {%- if (i + 1) < (stmts | length) %}
+        args = [{{stmts[0].op_func_in_out_names_signature.in_names | join(", ")}}]
+        for op_idx, op_func in enumerate(self.get_op_funcs()):
+            if EarlyReturn(op_idx):
+                return args
+            args = op_func(*args)
+        return args
 
-        if FastReturn({{i}}):
-            return {{ stmt.tensors_used_by_downstream | join(", ") }}
-    {%- endif %}
+    def get_op_funcs(self):
+        return [
+        {%- for stmt in stmts %}
+            self.{{stmt.op_unique_local_name}},
+        {%- endfor %}
+        ]
 
+    {%- for stmt in stmts %}
+    {%- set op_idx = loop.index0 %}
+
+    def {{stmt.op_unique_local_name}}(self, {{stmt.op_func_in_out_names_signature.in_names | join(", ")}}):
+
+        # EarlyReturn({{op_idx}})
+    
+        #    op: {{stmt.op_name}}
         #  type: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
         # shape: ({{stmt.outputs_shape_symbol_strs|join(", ")}}) <- ({{stmt.inputs_shape_symbol_strs|join(", ")}})
         #  data: ({{stmt.outputs_data_symbol_strs|join(", ")}}) <- ({{stmt.inputs_data_symbol_strs|join(", ")}})
+
         {%- for pycode in stmt.pycode %}
         {%- if pycode.num_tabs == 0 %}
         {{pycode.pycode}}
+        {%- elif pycode.num_tabs == 1 %}
+            {{pycode.pycode}}
+        {%- elif pycode.num_tabs == 2 %}
+                {{pycode.pycode}}
         {%- else %}
         raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
         {%- endif %}
         {%- endfor %}
+
+        return [{{stmt.op_func_in_out_names_signature.out_names | join(", ")}}]
+    
     {%- endfor %}
-        return {{output_arg_names | join(", ")}}
 
 
 class Test{{unittest_class_name}}(unittest.TestCase):

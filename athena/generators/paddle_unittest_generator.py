@@ -83,7 +83,7 @@ def RenderTemplate(
     for input_tensor in input_tensors
   ]
   return template.render(
-    stmts=list(enumerate(body_code_stmts)),
+    stmts=body_code_stmts,
     unittest_class_name=unittest_class_name,
     input_arg_names=input_arg_names,
     output_arg_names=[tensor.name for tensor in output_tensors],

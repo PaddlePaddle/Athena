@@ -40,31 +40,39 @@ def GetEnvVarEnableCinn():
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
-def FastReturn(i):
-    return (
-        type(paddle_debug_num_allowed_ops) is int
-        and i >= paddle_debug_num_allowed_ops
-    )
+if type(paddle_debug_num_allowed_ops) is not int:
+    def EarlyReturn(i):
+        return False
+else:
+    def EarlyReturn(i):
+        return i >= paddle_debug_num_allowed_ops
 
 class FusionOp(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
     def forward(self, while_0):
+        args = [while_0]
+        for op_idx, op_func in enumerate(self.get_op_funcs()):
+            if EarlyReturn(op_idx):
+                return args
+            args = op_func(*args)
+        return args
 
-        if FastReturn(0):
-            return while_0
+    def get_op_funcs(self):
+        return [
+            self.op_exp_0,
+        ]
 
+    def op_exp_0(self, while_0):
+    
+        #    op: pd_op.exp
         #  type: (1x-1x768xf32) <- (1x-1x768xf32)
         # shape: ([1, S0, 768]) <- ([1, S0, 768])
         #  data: (None) <- (None)
         exp_0 = paddle.exp(while_0)
 
-        #  type: () <- (1x-1x768xf32)
-        # shape: () <- ([1, S0, 768])
-        #  data: () <- (None)
-        None
-        return exp_0
+        return [exp_0]
 
 
 class TestFusionOp(unittest.TestCase):

@@ -11,7 +11,7 @@ import numpy as np
 import paddle
 
 def NumCurrentUnittestOperations():
-    return 6 # number-of-ops
+    return 1 # number-of-ops
 
 def GetPaddleDebugNumAllowedOps():
     try:
@@ -40,71 +40,41 @@ def GetEnvVarEnableCinn():
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
-def FastReturn(i):
-    return (
-        type(paddle_debug_num_allowed_ops) is int
-        and i >= paddle_debug_num_allowed_ops
-    )
+if type(paddle_debug_num_allowed_ops) is not int:
+    def EarlyReturn(i):
+        return False
+else:
+    def EarlyReturn(i):
+        return i >= paddle_debug_num_allowed_ops
 
 class GroupOp(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, data_0, full_2):
+    def forward(self, while_0):
+        args = [while_0]
+        for op_idx, op_func in enumerate(self.get_op_funcs()):
+            if EarlyReturn(op_idx):
+                return args
+            args = op_func(*args)
+        return args
 
-        if FastReturn(0):
-            return data_0, full_2
+    def get_op_funcs(self):
+        return [
+            self.op_exp_0,
+        ]
 
-        #  type: (xf32) <- (1x-1x768xf32)
-        # shape: ([]) <- ([1, S0, 768])
+    def op_exp_0(self, while_0):
+
+        # EarlyReturn(0)
+    
+        #    op: pd_op.exp
+        #  type: (1x-1x768xf32) <- (1x-1x768xf32)
+        # shape: ([1, S0, 768]) <- ([1, S0, 768])
         #  data: (None) <- (None)
-        reduce_sum_0 = paddle.sum(data_0, keepdim=False, axis=[])
+        exp_0 = paddle.exp(while_0)
 
-        if FastReturn(1):
-            return full_2, reduce_sum_0
-
-        #  type: (1xf32) <- ()
-        # shape: ([1]) <- ()
-        #  data: ([0]) <- ()
-        full_0 = paddle.full(shape=[1], dtype='float32', fill_value=0)
-
-        if FastReturn(2):
-            return full_2, reduce_sum_0, full_0
-
-        #  type: (1xb) <- (xf32, 1xf32)
-        # shape: ([1]) <- ([], [1])
-        #  data: (None) <- (None, [0])
-        greater_than_0 = reduce_sum_0 > full_0
-
-        if FastReturn(3):
-            return full_2, greater_than_0
-
-        #  type: (1xf32) <- ()
-        # shape: ([1]) <- ()
-        #  data: ([1]) <- ()
-        full_1 = paddle.full(shape=[1], dtype='float32', fill_value=1)
-
-        if FastReturn(4):
-            return full_2, greater_than_0, full_1
-
-        #  type: (1xb) <- (1xf32, 1xf32)
-        # shape: ([1]) <- ([1], [1])
-        #  data: (None) <- ([0], [1])
-        less_than_0 = full_2 < full_1
-
-        if FastReturn(5):
-            return greater_than_0, less_than_0
-
-        #  type: (1xb) <- (1xb, 1xb)
-        # shape: ([1]) <- ([1], [1])
-        #  data: (None) <- (None, None)
-        logical_and_0 = paddle.logical_and(greater_than_0, less_than_0)
-
-        #  type: () <- (1xb)
-        # shape: () <- ([1])
-        #  data: () <- (None)
-        None
-        return logical_and_0
+        return [exp_0]
 
 
 class TestGroupOp(unittest.TestCase):
@@ -115,7 +85,6 @@ class TestGroupOp(unittest.TestCase):
     def prepare_data(self):
         self.inputs = [
             paddle.uniform([1, 2, 768], dtype='float32', min=-0.5, max=0.5),
-            paddle.to_tensor([-1], dtype='float32').reshape([1]),
         ]
         for input in self.inputs:
           input.stop_gradient = True
@@ -124,7 +93,6 @@ class TestGroupOp(unittest.TestCase):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
             paddle.static.InputSpec(shape=[1, None, 768], dtype='float32'),
-            paddle.static.InputSpec(shape=[1], dtype='float32'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(

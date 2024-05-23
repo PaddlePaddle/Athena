@@ -1,11 +1,12 @@
 from athena.ir.ir_block import Block
+import typing as t
 
 class BlocksGenerator:
   def __init__(self, ir_program):
     self.ir_program = ir_program
     self.block_owner_ops = []
 
-  def Generate(self):
+  def Generate(self) -> t.List[Block]:
     self.ir_program(self)
     return self.block_owner_ops
 

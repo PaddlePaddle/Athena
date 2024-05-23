@@ -37,14 +37,20 @@ def GetPaddleDebugNumAllowedOps():
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
-def FastReturn(block_idx, op_idx):
-    if type(paddle_debug_num_allowed_blocks) is not int:
+if type(paddle_debug_num_allowed_blocks) is not int:
+    def EarlyReturn(block_idx, op_idx):
         return False
-    if block_idx + 1 != paddle_debug_num_allowed_blocks:
+
+elif type(paddle_debug_num_allowed_ops) is not int:
+    def EarlyReturn(block_idx, op_idx):
         return False
-    if type(paddle_debug_num_allowed_ops) is not int:
-        return False
-    return op_idx >= paddle_debug_num_allowed_ops
+        
+else:
+    def EarlyReturn(block_idx, op_idx):
+        if block_idx + 1 != paddle_debug_num_allowed_blocks:
+            return False
+        return op_idx >= paddle_debug_num_allowed_ops
+
 
 {% macro block_input_shape_global_var_name(block, block_idx, input_idx) -%}
 {{block.block_name}}_{{block_idx}}_{{input_idx}}_shape
@@ -56,14 +62,10 @@ class BlockEntries:
 
     def {{block.block_name}}(self, {{block.input_arg_names | join(", ")}}):
     {%- for stmt in block.stmts %}
-    {%- set op_idx = loop.index0 %}
-    {%- if op_idx > 0 %}
-
-        if FastReturn(block_idx={{block_idx}}, op_idx={{op_idx - 1}}):
-            return {{ stmt.tensors_used_by_downstream | join(", ") }}
-    {%- endif %}
+        {%- if (stmt.pycode | length) > 0%}
 
         # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+        {%- endif %}
         {%- for pycode in stmt.pycode %}
         {%- if pycode.num_tabs == 0 %}
         {{pycode.pycode}}
@@ -102,8 +104,10 @@ class BlockShapesExtractor:
         
     {%- for stmt in block.stmts %}
     {%- set op_idx = loop.index0 %}
-
+        {%- if (stmt.pycode | length) > 0%}
+        
         # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+        {%- endif %}
         {%- for pycode in stmt.pycode %}
         {%- if pycode.num_tabs == 0 %}
         {{pycode.pycode}}
@@ -249,12 +253,50 @@ class TestBase:
 
 if ShouldTestBlock({{block_idx}}):
 
-    class Block_{{block.block_name}}(paddle.nn.Layer):
+    class Block_{{block.block_name}}(paddle.nn.Layer, BlockEntries):
         def __init__(self):
             super().__init__()
 
         def forward(self, {{ block.input_arg_names | join(", ") }}):
-            return BlockEntries().{{block.block_name}}({{ block.input_arg_names | join(", ") }})
+            args = [{{block.stmts[0].op_func_in_out_names_signature.in_names | join(", ")}}]
+            for op_idx, op_func in enumerate(self.get_op_funcs()):
+                if EarlyReturn({{block_idx}}, op_idx):
+                    return args
+                args = op_func(*args)
+            return args
+
+        def get_op_funcs(self):
+            return [
+            {%- for stmt in block.stmts %}
+                self.{{stmt.op_unique_local_name}},
+            {%- endfor %}
+            ]
+
+        {%- for stmt in block.stmts %}
+        {%- set op_idx = loop.index0 %}
+
+        def {{stmt.op_unique_local_name}}(self, {{stmt.op_func_in_out_names_signature.in_names | join(", ")}}):
+        
+                # EarlyReturn({{block_idx}}, {{op_idx}})
+
+                # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+
+            {%- for pycode in stmt.pycode %}
+            {%- if pycode.num_tabs == 0 %}
+            {{pycode.pycode}}
+            {%- elif pycode.num_tabs == 1 %}
+                {{pycode.pycode}}
+            {%- elif pycode.num_tabs == 2 %}
+                    {{pycode.pycode}}
+            {%- else %}
+            raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
+            {%- endif %}
+            {%- endfor %}
+
+            return [{{stmt.op_func_in_out_names_signature.out_names | join(", ")}}]
+        
+        {%- endfor %}
+
 
     class Test_{{block.block_name}}(TestBase, unittest.TestCase):
         def prepare_data(self):
@@ -287,7 +329,6 @@ if ShouldTestBlock({{block_idx}}):
 
         def train(self, use_cinn):
             net = Block_{{block.block_name}}()
-            net.eval()
             if GetEnvVarEnableJit():
                 net = self.apply_to_static(net, use_cinn)
             out = net(*self.inputs)

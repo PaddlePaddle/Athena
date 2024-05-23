@@ -40,79 +40,105 @@ def GetEnvVarEnableCinn():
 
 paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
 
-def FastReturn(i):
-    return (
-        type(paddle_debug_num_allowed_ops) is int
-        and i >= paddle_debug_num_allowed_ops
-    )
+if type(paddle_debug_num_allowed_ops) is not int:
+    def EarlyReturn(i):
+        return False
+else:
+    def EarlyReturn(i):
+        return i >= paddle_debug_num_allowed_ops
 
 class FusionOp(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
     def forward(self, fusion_0, fusion_1):
+        args = [fusion_0, fusion_1]
+        for op_idx, op_func in enumerate(self.get_op_funcs()):
+            if EarlyReturn(op_idx):
+                return args
+            args = op_func(*args)
+        return args
 
-        if FastReturn(0):
-            return fusion_0, fusion_1
+    def get_op_funcs(self):
+        return [
+            self.op_reduce_sum_0,
+            self.op_full_0,
+            self.op_broadcast_0,
+            self.op_greater_than_0,
+            self.op_full_1,
+            self.op_less_than_0,
+            self.op_logical_and_0,
+        ]
 
+    def op_reduce_sum_0(self, fusion_0, fusion_1):
+    
+        #    op: cinn_op.reduce_sum
         #  type: (xf32) <- (1x-1x768xf32)
         # shape: ([]) <- ([1, S0, 768])
         #  data: (None) <- (None)
         reduce_sum_0 = paddle.sum(fusion_0, keepdim=False, axis=[])
 
-        if FastReturn(1):
-            return fusion_1, reduce_sum_0
+        return [fusion_1, reduce_sum_0]
 
+    def op_full_0(self, fusion_1, reduce_sum_0):
+    
+        #    op: pd_op.full
         #  type: (1xf32) <- ()
         # shape: ([1]) <- ()
         #  data: ([0]) <- ()
         full_0 = paddle.full(shape=[1], dtype='float32', fill_value=0)
 
-        if FastReturn(2):
-            return fusion_1, reduce_sum_0, full_0
+        return [fusion_1, reduce_sum_0, full_0]
 
+    def op_broadcast_0(self, fusion_1, reduce_sum_0, full_0):
+    
+        #    op: cinn_op.broadcast
         #  type: (1xf32) <- (xf32)
         # shape: ([1]) <- ([])
         #  data: (None) <- (None)
         broadcast_0 = paddle.broadcast_to(reduce_sum_0, [1])
 
-        if FastReturn(3):
-            return fusion_1, full_0, broadcast_0
+        return [fusion_1, full_0, broadcast_0]
 
+    def op_greater_than_0(self, fusion_1, full_0, broadcast_0):
+    
+        #    op: pd_op.greater_than
         #  type: (1xb) <- (1xf32, 1xf32)
         # shape: ([1]) <- ([1], [1])
         #  data: (None) <- (None, [0])
         greater_than_0 = broadcast_0 > full_0
 
-        if FastReturn(4):
-            return fusion_1, greater_than_0
+        return [fusion_1, greater_than_0]
 
+    def op_full_1(self, fusion_1, greater_than_0):
+    
+        #    op: pd_op.full
         #  type: (1xf32) <- ()
         # shape: ([1]) <- ()
         #  data: ([1]) <- ()
         full_1 = paddle.full(shape=[1], dtype='float32', fill_value=1)
 
-        if FastReturn(5):
-            return fusion_1, greater_than_0, full_1
+        return [fusion_1, greater_than_0, full_1]
 
+    def op_less_than_0(self, fusion_1, greater_than_0, full_1):
+    
+        #    op: pd_op.less_than
         #  type: (1xb) <- (1xf32, 1xf32)
         # shape: ([1]) <- ([1], [1])
         #  data: (None) <- (None, [1])
         less_than_0 = fusion_1 < full_1
 
-        if FastReturn(6):
-            return greater_than_0, less_than_0
+        return [greater_than_0, less_than_0]
 
+    def op_logical_and_0(self, greater_than_0, less_than_0):
+    
+        #    op: pd_op.logical_and
         #  type: (1xb) <- (1xb, 1xb)
         # shape: ([1]) <- ([1], [1])
         #  data: (None) <- (None, None)
         logical_and_0 = paddle.logical_and(greater_than_0, less_than_0)
 
-        #  type: () <- (1xb)
-        # shape: () <- ([1])
-        #  data: () <- (None)
-        None
-        return logical_and_0
+        return [logical_and_0]
 
 
 class TestFusionOp(unittest.TestCase):
