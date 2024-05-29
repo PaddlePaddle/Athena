@@ -10,6 +10,7 @@ class CinnUnittestGenerator:
     def GetArgTensor(i, arg_name):
       return Tensor(
         local_name_prefix="arg",
+        arg_name_as_input=None,
         name=arg_name,
         type=inputs[i].type,
         dim_exprs=inputs[i].dim_exprs

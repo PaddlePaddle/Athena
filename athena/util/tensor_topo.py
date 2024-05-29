@@ -133,6 +133,7 @@ class OpInOutNameSignatureExtractor:
     return self.in_out_names_sigs
 
   def __call__(self, op, input_tensors, kwargs):
+    input_tensors = [t for t in input_tensors if t is not None]
     if hasattr(self, op.GetPyVarName()):
       return getattr(self, op.GetPyVarName())(op, *input_tensors, **kwargs)
     free_vars = []

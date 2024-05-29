@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 import athena.ir.ir_tensor as ir_tensor
+import typing as t
 
 @dataclass
 class Op:
@@ -8,12 +9,10 @@ class Op:
   input_types: list
   output_types: list
   attrs: dict
-  block_positional_arg_names: list = field(
-    default_factory=lambda:[[]]
-  )
-  block_keyword_arg_names: list = field(
-    default_factory=lambda:[[]]
-  )
+  block_positional_arg_names: t.Optional[t.List[t.List[t.List[str]]]]
+  block_keyword_arg_names: t.Optional[t.List[t.List[t.List[str]]]]
+  block_positional_arg_types: t.Optional[t.List[t.List[t.List["Type"]]]]
+  block_keyword_arg_types: t.Optional[t.List[t.List[t.List["Type"]]]]
   __operands_symbols_signature__: "ArrayAttribute" = None
   __results_symbols_signature__: "ArrayAttribute" = None
 
@@ -24,9 +23,15 @@ class Op:
     return ir_tensor.Tensor(
       local_name_prefix=self.GetNameSuffix(),
       name=self.GetResultTensorName(i),
+      arg_name_as_input=self.GetArgNameAsInput(),
       type=self.output_types[i],
       dim_exprs=self.__results_symbols_signature__.value[i].value
     )
+
+  def GetArgNameAsInput(self):
+    if self.name == 'pd_op.data':
+      return self.attrs['name'].value
+    return None
   
   def GetResultTensorName(self, i):
     return f"{self.GetUniqueName()}{i}"

@@ -15,8 +15,10 @@ The file named `fusion_op_programs.py` in the logging directory collects all pir
 ### module op unittests
 
 ```bash
-python3 -m athena.module_op_unittests /path/to/original_programs.py --output_dir=/path/to/output/dir
+python3 -m athena.module_op_unittests --input_dir=/path/to/input/directory --output_dir=/path/to/output/directory
 ```
+Please put `original_programs.py` and `programs_example_input_tensor_meta.py` into `input_dir`
+
 examples see `tests/test-generate-module-op-unittests.sh`
 
 ### group op unittests
@@ -32,6 +34,19 @@ examples see `tests/test-generate-group-op-unittests.sh`
 python3 -m athena.fusion_op_unittests /path/to/fusion_op_programs.py --output_dir=/path/to/output/dir
 ```
 examples see `tests/test-generate-fusion-op-unittests.sh`
+
+
+### primitive op unittests 
+
+```bash
+# Generate example tensor meta scripts into /path/to/output/dir/example-tensor-meta-scripts
+python3 -m athena.example_tensor_meta_scripts /path/to/original_programs.py --output_dir=/path/to/output/dir
+# Dump example tensor meta results into /path/to/output/dir/example-tensor-meta-results by executing /path/to/output/dir/example-tensor-meta-scripts/run.py
+python3 -m athena.example_tensor_meta_results /path/to/original_programs.py --output_dir=/path/to/output/dir
+# Dump primitive op unittests. by using example tensor meta from /path/to/output/dir/example-tensor-meta-results
+python3 -m athena.primitive_op_unittests /path/to/original_programs.py --output_dir=/path/to/output/dir
+```
+examples see `tests/test-generate-primitive-op-unittests.sh`
 
 ## How to bisearch bug op for a unittest?
 

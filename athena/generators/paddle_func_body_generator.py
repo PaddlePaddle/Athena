@@ -50,6 +50,8 @@ class PaddleFuncBodyGenerator:
 
   def Generate(self, free_vars, args):
     def get_local_name(tensor):
+      if tensor is None:
+        return None
       return self.tensor_converter.ConvertToLocalTensor(tensor).name
     self.op_id2used_by_me_and_downstream = GetOpId2TensorNamesUsedByMeAndDownstream(
       self.func, free_vars, args, get_local_name

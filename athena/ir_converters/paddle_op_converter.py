@@ -10,6 +10,8 @@ def ConvertToPaddleOp(op):
     attrs={name:ConvertAttributeToString(attr) for name, attr in op.attrs.items()},
     block_positional_arg_names=op.block_positional_arg_names,
     block_keyword_arg_names=op.block_keyword_arg_names,
+    block_positional_arg_types=op.block_positional_arg_types,
+    block_keyword_arg_types=op.block_keyword_arg_types,
     base_op=op,
     __operands_symbols_signature__=op.__operands_symbols_signature__,
     __results_symbols_signature__=op.__results_symbols_signature__,

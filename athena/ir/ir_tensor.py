@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List, Union
+import typing as t
 
 from athena.ir.ir_symbol import ShapeOrDataDimExprs
 
@@ -7,6 +8,7 @@ from athena.ir.ir_symbol import ShapeOrDataDimExprs
 class Tensor:
   local_name_prefix: str
   name: str
+  arg_name_as_input: t.Optional[str]
   type: "Type"
   dim_exprs: ShapeOrDataDimExprs
 

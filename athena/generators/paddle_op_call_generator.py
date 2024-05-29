@@ -111,18 +111,8 @@ class PaddleOpCallGenerator:
       return getattr(self, method_name)(op, *inputs)
     return self._GenerateOpCall(self.m, op, *inputs)
 
-  def GenerateCOpsCall(self, op, *inputs):
-    return self._GenerateOpCall(f"{self.m}._C_ops", op, *inputs)
-
-  def _GenerateOpCall(self, m, op, *inputs):
-    input_names = ", ".join([t.name for t in inputs])
-    attr_str = ", ".join([
-      f"{attr_name}={attr_value}"
-      for attr_name, attr_value in self.GetOpAttrs(op)
-    ])
-    if len(attr_str) > 0:
-      attr_str = ", " + attr_str
-    return f"{m}.{self.PaddleMethodName(op)}({input_names}{attr_str})"
+  def PaddleMethodName(self, op):
+    return op.GetValidPyVarNameComponents()[-1]
 
   def GetOpAttrs(self, op):
     ignored_attr_names = {
@@ -136,8 +126,45 @@ class PaddleOpCallGenerator:
         continue
       yield attr_name, attr_value
 
-  def PaddleMethodName(self, op):
-    return op.GetValidPyVarNameComponents()[-1]
+  def _GenerateOpCall(self, m, op, *inputs):
+    input_names = ", ".join([t.name if t is not None else "None" for t in inputs])
+    attr_str = ", ".join([
+      f"{attr_name}={attr_value}"
+      for attr_name, attr_value in self.GetOpAttrs(op)
+    ])
+    if len(attr_str) > 0:
+      attr_str = ", " + attr_str
+    return f"{m}.{self.PaddleMethodName(op)}({input_names}{attr_str})"
+
+  def GenerateCOpsCall(self, op, *inputs, **kwargs):
+    attr_names = kwargs['attr_names']
+    m = f"{self.m}._C_ops"
+    input_names = ", ".join([t.name if t is not None else "None" for t in inputs])
+    attrs = {k:v for k, v in self.GetOpAttrs(op)}
+    attr_str = ", ".join([
+      f"{attrs[attr_name]}"
+      for attr_name in attr_names
+    ])
+    if len(attr_str) > 0:
+      attr_str = ", " + attr_str
+    return f"{m}.{self.PaddleMethodName(op)}({input_names}{attr_str})"
+
+  def pd_op_conv2d(self, op, *inputs):
+    return self.GenerateCOpsCall(op, *inputs, attr_names=[
+      'strides', 'paddings', 'padding_algorithm', 'dilations', 'groups', 'data_format'
+    ])
+
+  def pd_op_nearest_interp(self, op, *inputs):
+    return self.GenerateCOpsCall(op, *inputs, attr_names=[
+      'data_format',
+      'out_d',
+      'out_h',
+      'out_w',
+      'scale',
+      'interp_method',
+      'align_corners',
+      'align_mode',
+    ])
 
   def pd_op_sigmoid(self, op, x):
     return f"{self.m}.nn.functional.sigmoid({x.name})"

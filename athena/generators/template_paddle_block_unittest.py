@@ -24,9 +24,9 @@ def GetPaddleDebugNumAllowedBlocks():
 
 paddle_debug_num_allowed_blocks = GetPaddleDebugNumAllowedBlocks()
 
-def ShouldTestBlock(block_idx):
+def ShouldTestBlock(block_idx, is_entry_block):
     if paddle_debug_num_allowed_blocks is not int:
-        return True
+        return is_entry_block
     return block_idx < paddle_debug_num_allowed_blocks
 
 def GetPaddleDebugNumAllowedOps():
@@ -152,17 +152,6 @@ class BlockShapesExtractor:
 {%- endif %}
 {%- endmacro %}
 
-def call_once(f):
-    once_flag = False
-    def ret_func(*args, **kwargs):
-        nonlocal once_flag
-        if once_flag:
-            return
-        f(*args, **kwargs)
-        once_flag = True
-    return ret_func
-
-@call_once
 def InferBlockInputShapes():
     extractor = BlockShapesExtractor()
 {%- for block in blocks %}
@@ -223,7 +212,6 @@ def IsInteger(dtype):
 class TestBase:
     def setUp(self):
         paddle.seed(2024)
-        InferBlockInputShapes()
         self.prepare_data()
 
     def test_train(self):
@@ -253,7 +241,7 @@ class TestBase:
 {%- for block in blocks %}
 {%- set block_idx = loop.index0 %}
 
-if ShouldTestBlock({{block_idx}}):
+if ShouldTestBlock({{block_idx}}, is_entry_block={{block.is_entry_block}}):
 
     class Block_{{block.block_name}}(paddle.nn.Layer, BlockEntries):
         def __init__(self):
@@ -339,4 +327,5 @@ if ShouldTestBlock({{block_idx}}):
 {%- endfor %}
 
 if __name__ == '__main__':
+    InferBlockInputShapes()
     unittest.main()
