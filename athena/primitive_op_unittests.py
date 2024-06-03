@@ -28,7 +28,7 @@ def WithTempDirectory(f):
 
 
 def Main(tmp_dir):
-  assert os.path.isdir(FLAGS.output_dir), f"file {FLAGS.output_dir} not existed."
+  assert os.path.isdir(FLAGS.output_dir), f"directory {FLAGS.output_dir} not existed."
   shutil.copyfile(FLAGS.ir_programs, f"{tmp_dir}/original_programs.py")
   shutil.copyfile(FLAGS.example_inputs, f"{tmp_dir}/programs_example_input_tensor_meta.py")
   file_prefix = "tmp_op_example_input_"

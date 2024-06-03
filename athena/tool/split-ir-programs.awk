@@ -5,7 +5,7 @@ BEGIN {
 
 /class PirProgram_/ {
   cls_no += 1
-  output_file = dir "/PirProgram_" sprintf("%08d", cls_no) ".py"
+  output_file = dir "/pir_program_" sprintf("%08d", cls_no) ".py"
 }
 
 {
