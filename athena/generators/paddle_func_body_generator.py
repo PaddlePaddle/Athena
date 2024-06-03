@@ -23,8 +23,10 @@ class IndentedPyCode:
 @dataclass
 class PyCodeStmt:
   op_name: str
+  op_id: int
   op_unique_local_name: str
   pycode: List[IndentedPyCode]
+  input_tensor_names: List[str]
   inputs_type_strs: List[str]
   outputs_type_strs: List[str]
   inputs_shape_symbol_strs: List[str]
@@ -105,7 +107,7 @@ class PaddleFuncBodyGenerator:
     output_unpack_str = ", ".join(local_output_tensor_names)
     input_var_str = ", ".join(t.name for t in local_input_tensors)
     block_name = BlockNameGenerator().Generate(op, region_idx=0, block_idx=0)
-    block_args_str = ", ".join(t.name for t in [*free_vars, *local_input_tensors])
+    block_args_str = ", ".join(t.name for t in [*free_vars, *args])
     arg_str = ", ".join(t.name for t in args)
     return [
       self.Indent0(f"while {cond.name}:"),
@@ -152,10 +154,12 @@ class PaddleFuncBodyGenerator:
       return op.GetResults()
     self.stmts.append(PyCodeStmt(
       op_name=op.name,
+      op_id=op.op_id,
       op_unique_local_name=self.op_name_generator.Generate(
         key=op.op_id,
         prefix=f"op_{op.GetNameSuffix()}",
       ),
+      input_tensor_names=[t.name for t in input_local_tensors],
       inputs_type_strs=inputs_type_strs,
       outputs_type_strs=outputs_type_strs,
       inputs_shape_symbol_strs=inputs_shape_symbol_strs,

@@ -154,17 +154,18 @@ class BlockShapesExtractor:
 
 def InferBlockInputShapes():
     extractor = BlockShapesExtractor()
-{%- for block in blocks %}
-{%- if block.is_entry_block %}
-{%- set block_idx = loop.index0 %}
-    extractor.{{block.block_name}}(
-    {%- for arg_name in block.input_arg_names %}
-    {%- set input_idx = loop.index0 %}
-        {{arg_name}}={{get_input_tensor_instance(block, block_idx, input_idx)}},
+    for _ in range(10):
+    {%- for block in blocks %}
+    {%- if block.is_entry_block %}
+    {%- set block_idx = loop.index0 %}
+        extractor.{{block.block_name}}(
+        {%- for arg_name in block.input_arg_names %}
+        {%- set input_idx = loop.index0 %}
+            {{arg_name}}={{get_input_tensor_instance(block, block_idx, input_idx)}},
+        {%- endfor %}
+        )
+    {%- endif %}
     {%- endfor %}
-    )
-{%- endif %}
-{%- endfor %}
 
 
 def GetEnvVarEnableJit():

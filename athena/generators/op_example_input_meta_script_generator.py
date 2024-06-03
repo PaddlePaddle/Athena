@@ -26,9 +26,12 @@ InputSpecDesc = namedtuple("InputSpecDesc", [
   "dtype",
 ])
 
-class ExampleTensorMetaScriptGenerator:
+class OpExampleInputMetaScriptGenerator:
 
-  def __init__(self, ir_program):
+  def __init__(self, ir_program, example_inputs_meta_getter):
+    self.example_inputs_meta_getter = example_inputs_meta_getter
+    self.name = type(ir_program).__name__
+    self.program_id = int(self.name[len('PirProgram_'):])
     self.blocks_generator = BlocksGenerator(ir_program)
     self.block_name_gen = BlockNameGenerator()
     self.unittest_stmts_gen = PaddleBlockUnittestStmtsGenerator(self.block_name_gen)
@@ -36,11 +39,18 @@ class ExampleTensorMetaScriptGenerator:
   def Generate(self):
 
     def GetShapeInstance(tensor):
-      example_dim = 2
-      return [
-        (dim if dim >= 0 else example_dim)
-        for dim in tensor.shape
-      ]
+      if tensor.arg_name_as_input is not None:
+        tensor_meta = self.example_inputs_meta_getter.Get(
+          program_id=self.program_id,
+          input_name=tensor.arg_name_as_input,
+        )
+        return tensor_meta.shape
+      else:
+        example_dim = 2
+        return [
+          (dim if dim >= 0 else example_dim)
+          for dim in tensor.shape
+        ]
 
     def GetInputTensorDesc(input_tensor):
       return MakeInputTensorDesc(
@@ -80,11 +90,11 @@ class ExampleTensorMetaScriptGenerator:
       MakeBlockDescriptor(block)
       for block in self.blocks_generator.Generate()
     ]
-    return self._RenderTemplate(blocks=blocks)
+    return self.name, self._RenderTemplate(blocks=blocks)
 
   def _RenderTemplate(self, blocks):
-    template = self._GetTemplate("template_paddle_block_unittest.py")
-    return template.render(blocks=blocks)
+    template = self._GetTemplate("template_op_example_input_meta_script.py")
+    return template.render(blocks=blocks, program_id=self.program_id)
 
   def _GetTemplate(self, template_name):
     dir_path = os.path.dirname(os.path.realpath(__file__))

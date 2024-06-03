@@ -31,7 +31,7 @@ class ModuleOpUnittestGenerator:
   def __init__(self, ir_program, example_inputs_meta_getter):
     self.example_inputs_meta_getter = example_inputs_meta_getter
     self.name = type(ir_program).__name__
-    self.random_logging_id = int(self.name[len('PirProgram_'):])
+    self.program_id = int(self.name[len('PirProgram_'):])
     self.blocks_generator = BlocksGenerator(ir_program)
     self.block_name_gen = BlockNameGenerator()
     self.unittest_stmts_gen = PaddleBlockUnittestStmtsGenerator(self.block_name_gen)
@@ -41,7 +41,7 @@ class ModuleOpUnittestGenerator:
     def GetShapeInstance(tensor):
       if tensor.arg_name_as_input is not None:
         tensor_meta = self.example_inputs_meta_getter.Get(
-          random_logging_id=self.random_logging_id,
+          program_id=self.program_id,
           input_name=tensor.arg_name_as_input,
         )
         return tensor_meta.shape
