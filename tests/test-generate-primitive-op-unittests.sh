@@ -1,5 +1,1 @@
-original_programs=example-original-programs.py
-output_dir=./primitive-op-tmp
-python3 -m athena.example_tensor_meta_scripts $original_programs --output_dir=$output_dir
-python3 -m athena.example_tensor_meta_results $original_programs --output_dir=$output_dir
-python3 -m athena.primitive_op_unittests $original_programs --output_dir=$output_dir
+python3.9 -m athena.primitive_op_unittests --ir_programs=./primitive-op-input/original_programs.py --example_inputs=./primitive-op-input/programs_example_input_tensor_meta.py --output_dir=./primitive-op-output

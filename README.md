@@ -39,20 +39,7 @@ examples see `tests/test-generate-fusion-op-unittests.sh`
 ### primitive op unittests 
 
 ```bash
-# Generate op example input tensor meta script
-# required file 0: $input_dir/original_programs.py
-# required file 1: $input_dir/programs_example_input_tensor_meta.py
-# returned file 0: $output_dir/op_example_input_meta_script.py
-python3 -m athena.op_example_input_meta_script --input_dir=/path/to/input/dir --output_dir=/path/to/output/dir
-# Dump op example input meta results
-# required file 0: $input_dir/op_example_input_meta_script.py
-# returned file 0: $output_dir/op_example_input_meta_result.py
-python3 -m athena.op_example_input_meta_result --input_dir=/path/to/input/dir --output_dir=/path/to/output/dir
-# Generate primitive op unittests.
-# required file 0: $input_dir/original_programs.py
-# required file 1: $input_dir/op_example_input_meta_result.py
-# returned file $op: $output_dir/test_$op_*.py for each $op in original_programs.py
-python3 -m athena.primitive_op_unittests --input_dir=/path/to/input/dir --output_dir=/path/to/output/dir
+python3 -m athena.primitive_op_unittests --ir_programs=/path/to/original_programs.py --example_inputs=/path/to/programs_example_input_tensor_meta.py --output_dir=/path/to/output/dir/
 ```
 examples see `tests/test-generate-primitive-op-unittests.sh`
 
