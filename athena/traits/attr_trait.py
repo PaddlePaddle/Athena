@@ -48,6 +48,8 @@ class AttrTrait:
     return ir_attr.ScalarAttribute(value)
 
   def a_dtype(self, dtype_name):
+    if dtype_name == "Undefined":
+      dtype_name = None
     return ir_attr.DataTypeAttribute(dtype_name)
 
   def a_place(self, type, devcie = None):

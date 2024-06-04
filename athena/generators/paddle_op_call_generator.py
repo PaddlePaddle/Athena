@@ -1,4 +1,5 @@
 import athena.ir.ir_attr as ir_attr
+from athena.generators.paddle_c_ops_attr_names import GetCOpsAttrNames
 
 class GSOutputDimGenerator:
 
@@ -109,6 +110,13 @@ class PaddleOpCallGenerator:
     method_name = op.GetPyVarName()
     if hasattr(self, method_name):
       return getattr(self, method_name)(op, *inputs)
+    cops_attrs = GetCOpsAttrNames(self.PaddleMethodName(op))
+    if cops_attrs is not None:
+      return self.GenerateCOpsCall(op, inputs, [
+        attr_name
+        for attr_name in cops_attrs
+        if attr_name in op.attrs
+      ])
     return self._GenerateOpCall(self.m, op, *inputs)
 
   def PaddleMethodName(self, op):
@@ -136,26 +144,24 @@ class PaddleOpCallGenerator:
       attr_str = ", " + attr_str
     return f"{m}.{self.PaddleMethodName(op)}({input_names}{attr_str})"
 
-  def GenerateCOpsCall(self, op, *inputs, **kwargs):
-    attr_names = kwargs['attr_names']
+  def GenerateCOpsCall(self, op, inputs, attr_names):
     m = f"{self.m}._C_ops"
     input_names = ", ".join([t.name if t is not None else "None" for t in inputs])
-    attrs = {k:v for k, v in self.GetOpAttrs(op)}
+    attrs = op.attrs
     attr_str = ", ".join([
       f"{attrs[attr_name]}"
       for attr_name in attr_names
     ])
-    if len(attr_str) > 0:
-      attr_str = ", " + attr_str
-    return f"{m}.{self.PaddleMethodName(op)}({input_names}{attr_str})"
+    opt_comma = ", " if len(attr_str) > 0 and len(input_names) > 0 else ""
+    return f"{m}.{self.PaddleMethodName(op)}({input_names}{opt_comma}{attr_str})"
 
   def pd_op_conv2d(self, op, *inputs):
-    return self.GenerateCOpsCall(op, *inputs, attr_names=[
+    return self.GenerateCOpsCall(op, inputs, attr_names=[
       'strides', 'paddings', 'padding_algorithm', 'dilations', 'groups', 'data_format'
     ])
 
   def pd_op_nearest_interp(self, op, *inputs):
-    return self.GenerateCOpsCall(op, *inputs, attr_names=[
+    return self.GenerateCOpsCall(op, inputs, attr_names=[
       'data_format',
       'out_d',
       'out_h',
@@ -178,17 +184,11 @@ class PaddleOpCallGenerator:
   def pd_op_subtract(self, op, x, y):
     return f"{x.name} - {y.name}"
 
-  def pd_op_exp(self, op, x):
-    return f"{self.m}.exp({x.name})"
-
   def pd_op_rsqrt(self, op, x):
     return f"{self.m}.rsqrt({x.name})"
 
   def pd_op_expand(self, op, x, shape):
     return f"{self.m}.expand({x.name}, {shape.name})"
-
-  def pd_op_full(self, op):
-    return f"{self.m}.full(shape={op.attrs['shape']}, dtype='{op.attrs['dtype']}', fill_value={op.attrs['value']})"
 
   def cf_yield(self, op, *inputs):
     return None
@@ -211,9 +211,6 @@ class PaddleOpCallGenerator:
 
   def pd_op_concat(self, op, x, y):
     return f"{self.m}.concat({x.name}, {y.name})"
-
-  def pd_op_sum(self, op, x, axis):
-    return f"{self.m}.sum({x.name}, keepdim={op.attrs['keepdim']}, axis={axis.name})"
 
   def pd_op_matmul(self, op, x, y):
     return f"{self.m}.matmul({x.name}, {y.name}, transpose_x={op.attrs['transpose_x']}, transpose_y={op.attrs['transpose_y']})"

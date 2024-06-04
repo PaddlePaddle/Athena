@@ -87,13 +87,14 @@ class PrimitiveOp0(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input_0):
-        return paddle.exp(input_0)
+    def forward(self, input_0, input_1):
+        return paddle._C_ops.sum(input_0, input_1, None, False)
 
 class TestPrimitiveOp0(TestBase, unittest.TestCase):
     def prepare_data(self):
         self.inputs = [
             paddle.uniform([1, 2048, 768], dtype='float32', min=-0.5, max=0.5),
+            paddle.to_tensor([], dtype='int64'),
         ]
         for input in self.inputs:
             input.stop_gradient = True
@@ -102,6 +103,7 @@ class TestPrimitiveOp0(TestBase, unittest.TestCase):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
             paddle.static.InputSpec(shape=[1, None, 768], dtype='float32'),
+            paddle.static.InputSpec(shape=[0], dtype='int64'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(
@@ -122,13 +124,14 @@ class PrimitiveOp1(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, input_0):
-        return paddle.exp(input_0)
+    def forward(self, input_0, input_1):
+        return paddle._C_ops.sum(input_0, input_1, None, False)
 
 class TestPrimitiveOp1(TestBase, unittest.TestCase):
     def prepare_data(self):
         self.inputs = [
             paddle.uniform([1, 2048, 768], dtype='float32', min=-0.5, max=0.5),
+            paddle.to_tensor([], dtype='int64'),
         ]
         for input in self.inputs:
             input.stop_gradient = True
@@ -137,6 +140,7 @@ class TestPrimitiveOp1(TestBase, unittest.TestCase):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
             paddle.static.InputSpec(shape=[1, None, 768], dtype='float32'),
+            paddle.static.InputSpec(shape=[0], dtype='int64'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(

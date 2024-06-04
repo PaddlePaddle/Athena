@@ -87,12 +87,13 @@ class PrimitiveOp0(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, ):
-        return paddle.full(shape=[1], dtype='float32', fill_value=0)
+    def forward(self, input_0):
+        return paddle._C_ops.exp(input_0)
 
 class TestPrimitiveOp0(TestBase, unittest.TestCase):
     def prepare_data(self):
         self.inputs = [
+            paddle.uniform([1, 2048, 768], dtype='float32', min=-0.5, max=0.5),
         ]
         for input in self.inputs:
             input.stop_gradient = True
@@ -100,6 +101,7 @@ class TestPrimitiveOp0(TestBase, unittest.TestCase):
     def apply_to_static(self, net, use_cinn):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
+            paddle.static.InputSpec(shape=[1, None, 768], dtype='float32'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(
@@ -120,12 +122,13 @@ class PrimitiveOp1(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
 
-    def forward(self, ):
-        return paddle.full(shape=[1], dtype='float32', fill_value=0)
+    def forward(self, input_0):
+        return paddle._C_ops.exp(input_0)
 
 class TestPrimitiveOp1(TestBase, unittest.TestCase):
     def prepare_data(self):
         self.inputs = [
+            paddle.uniform([1, 2048, 768], dtype='float32', min=-0.5, max=0.5),
         ]
         for input in self.inputs:
             input.stop_gradient = True
@@ -133,6 +136,7 @@ class TestPrimitiveOp1(TestBase, unittest.TestCase):
     def apply_to_static(self, net, use_cinn):
         build_strategy = paddle.static.BuildStrategy()
         input_spec = [
+            paddle.static.InputSpec(shape=[1, None, 768], dtype='float32'),
         ]
         build_strategy.build_cinn_pass = use_cinn
         return paddle.jit.to_static(
@@ -144,72 +148,6 @@ class TestPrimitiveOp1(TestBase, unittest.TestCase):
 
     def train(self, use_cinn):
         net = PrimitiveOp1()
-        if GetEnvVarEnableJit():
-            net = self.apply_to_static(net, use_cinn)
-        out = net(*self.inputs)
-        return out
-
-class PrimitiveOp2(paddle.nn.Layer):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, ):
-        return paddle.full(shape=[1], dtype='float32', fill_value=1)
-
-class TestPrimitiveOp2(TestBase, unittest.TestCase):
-    def prepare_data(self):
-        self.inputs = [
-        ]
-        for input in self.inputs:
-            input.stop_gradient = True
-
-    def apply_to_static(self, net, use_cinn):
-        build_strategy = paddle.static.BuildStrategy()
-        input_spec = [
-        ]
-        build_strategy.build_cinn_pass = use_cinn
-        return paddle.jit.to_static(
-            net,
-            input_spec=input_spec,
-            build_strategy=build_strategy,
-            full_graph=True,
-        )
-
-    def train(self, use_cinn):
-        net = PrimitiveOp2()
-        if GetEnvVarEnableJit():
-            net = self.apply_to_static(net, use_cinn)
-        out = net(*self.inputs)
-        return out
-
-class PrimitiveOp3(paddle.nn.Layer):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, ):
-        return paddle.full(shape=[1], dtype='float32', fill_value=1)
-
-class TestPrimitiveOp3(TestBase, unittest.TestCase):
-    def prepare_data(self):
-        self.inputs = [
-        ]
-        for input in self.inputs:
-            input.stop_gradient = True
-
-    def apply_to_static(self, net, use_cinn):
-        build_strategy = paddle.static.BuildStrategy()
-        input_spec = [
-        ]
-        build_strategy.build_cinn_pass = use_cinn
-        return paddle.jit.to_static(
-            net,
-            input_spec=input_spec,
-            build_strategy=build_strategy,
-            full_graph=True,
-        )
-
-    def train(self, use_cinn):
-        net = PrimitiveOp3()
         if GetEnvVarEnableJit():
             net = self.apply_to_static(net, use_cinn)
         out = net(*self.inputs)

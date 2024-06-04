@@ -88,7 +88,7 @@ class PrimitiveOp0(paddle.nn.Layer):
         super().__init__()
 
     def forward(self, input_0, input_1):
-        return paddle.scale(input_0, input_1, bias_after_scale=True, bias=1)
+        return paddle._C_ops.scale(input_0, input_1, 1, True)
 
 class TestPrimitiveOp0(TestBase, unittest.TestCase):
     def prepare_data(self):

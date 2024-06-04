@@ -50,10 +50,16 @@ class AttributeToStringConverter:
     raise "NotImplemented('ScalarAttribute Converter not implemented.')"
 
   def DataTypeAttribute(attr):
-    return attr.value
+    if attr.value is None:
+      return "None"
+    return f"paddle.{attr.value}"
 
   def PlaceAttribute(attr):
-    return f"'{attr.type}:{attr.device}'"
+    if attr.type == "cpu":
+      return "paddle.core.CPUPlace()"
+    if attr.type == "undefined":
+      return "paddle.framework._current_expected_place()"
+    return f'"{attr.type}:{attr.device}"'
 
   def DataLayoutAttribute(attr):
     return f"'{attr.value}'"
