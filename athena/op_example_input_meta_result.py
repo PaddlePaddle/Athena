@@ -17,7 +17,7 @@ def main(argv):
     output_file = f"{FLAGS.output_dir}/result_{os.path.basename(pyfile)}"
     System(f"{sys.executable} {pyfile} {output_file}")
   concated_out = f"{FLAGS.output_dir}/op_example_input_meta_result.py"
-  System(f"cat {FLAGS.output_dir}/result_{FLAGS.input_file_prefix}*.py | tee {concated_out}")
+  System(f"cat {FLAGS.output_dir}/result_{FLAGS.input_file_prefix}*.py 2>/dev/null | tee {concated_out}")
 
 def System(cmd):
   print(cmd, file=sys.stderr)

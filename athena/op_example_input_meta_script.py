@@ -99,8 +99,8 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
     ir_program
     for cls in GetProgramClasses(original_programs_file)
     for ir_program in [cls()]
-    if not IsProgramEmpty(ir_program)
     if not IsBackwardProgram(ir_program)
+    if not IsProgramEmpty(ir_program)
     if HasExampleInputs(ir_program, example_inputs_meta_getter)
   )
   for ir_program in ir_programs:
