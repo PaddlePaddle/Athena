@@ -69,6 +69,7 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
     for ir_program in ir_programs
     for program_id in [GetProgramId(ir_program)]
     for op in primitive_op_extractor.Extract(ir_program)
+    if len(op.input_types) > 0
   ]
   def GetPyVarName(uid_and_op):
     return uid_and_op[1].GetPyVarName()

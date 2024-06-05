@@ -6,6 +6,7 @@ from athena.util.example_inputs_meta_getter import ExampleInputsMetaGetter
 from athena.generators.op_example_input_meta_script_generator import (
   OpExampleInputMetaScriptGenerator
 )
+from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
 import athena.ir.ir_op as ir_op
 import sys
 from absl import app
@@ -21,7 +22,8 @@ flags.DEFINE_string("input_dir", "./input-dir", "input directory.")
 flags.DEFINE_string("output_file_prefix", "tmp_op_example_input_", "input file prefix")
 
 def main(argv):
-  map(os.remove, glob.glob(f"{FLAGS.output_dir}/{FLAGS.output_file_prefix}*.py"))
+  for f in glob.glob(f"{FLAGS.output_dir}/{FLAGS.output_file_prefix}*.py"):
+    os.remove(f)
   original_programs_file = f"{FLAGS.input_dir}/original_programs.py"
   example_inputs_file = f"{FLAGS.input_dir}/programs_example_input_tensor_meta.py"
   for name, unittest in GetOutputUnittests(original_programs_file, example_inputs_file):
@@ -55,13 +57,53 @@ def IsBackwardProgram(ir_program):
       return True
   return False
 
+def GetModuleBlockFunc(ir_program):
+  module_block_func = None
+  def ExtractOpInfo(op, blocks=None):
+    assert op.name == "builtin.module"
+    assert len(blocks) == 1
+    assert len(blocks[0]) == 1
+    assert len(blocks[0][0]) == 1
+    nonlocal module_block_func
+    module_block_func = blocks[0][0][0]
+  ir_program(ExtractOpInfo)
+  assert module_block_func is not None
+  return module_block_func
+
+def IsProgramEmpty(ir_program):
+  module_block_func = GetModuleBlockFunc(ir_program)
+  op_count = 0
+  def IncOpCount(op, *args, **kwargs):
+    nonlocal op_count
+    op_count += 1
+    return op.GetResults()
+  module_block_func(IncOpCount)()
+  return op_count == 0
+
+def ExtractInputTensors(ir_program):
+  module_block_func = GetModuleBlockFunc(ir_program)
+  extractor = InputOutputTensorsExtractor(module_block_func)
+  input_tensors, _ = extractor.Extract(free_vars=[], args=[])
+  return input_tensors
+
+def HasExampleInputs(ir_program, example_inputs_meta_getter):
+  input_tensors = ExtractInputTensors(ir_program)
+  return example_inputs_meta_getter.HasAllInputNames(
+    program_id=int(type(ir_program).__name__[len('PirProgram_'):]),
+    input_names=[t.arg_name_as_input for t in input_tensors]
+  )
+
 def GetOutputUnittests(original_programs_file, example_inputs_file):
   example_inputs_meta_getter = MakeExampleInputsMetaGetter(example_inputs_file)
-  for cls in GetProgramClasses(original_programs_file):
-    ir_program = cls()
-    if IsBackwardProgram(ir_program):
-      # Ignore backward programs
-      continue
+  ir_programs = (
+    ir_program
+    for cls in GetProgramClasses(original_programs_file)
+    for ir_program in [cls()]
+    if not IsProgramEmpty(ir_program)
+    if not IsBackwardProgram(ir_program)
+    if HasExampleInputs(ir_program, example_inputs_meta_getter)
+  )
+  for ir_program in ir_programs:
     generator = OpExampleInputMetaScriptGenerator(ir_program, example_inputs_meta_getter)
     name, unittest = generator.Generate()
     yield name, unittest

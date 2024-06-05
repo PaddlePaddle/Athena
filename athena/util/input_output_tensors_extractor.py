@@ -21,6 +21,9 @@ class InputOutputTensorsExtractor:
   def builtin_shadow_output(self, op, *inputs):
     self.output_tensors += list(inputs)
 
+  def pd_op_fetch(self, op, *inputs):
+    self.output_tensors += list(inputs)
+
   def cf_yield(self, op, *inputs):
     self.output_tensors += list(inputs)
 

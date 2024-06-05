@@ -19,4 +19,5 @@ class PrimitiveOpExtractor:
       "builtin.parameter",
       "cf.yield",
       "builtin.shadow_output",
+      "pd_op.fetch",
     }

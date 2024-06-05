@@ -1,5 +1,6 @@
 import athena.ir.ir_attr as ir_attr
 from athena.generators.paddle_c_ops_attr_names import GetCOpsAttrNames
+import sys
 
 class GSOutputDimGenerator:
 
@@ -194,6 +195,9 @@ class PaddleOpCallGenerator:
     return None
 
   def builtin_shadow_output(self, op, *inputs):
+    return None
+
+  def pd_op_fetch(self, op, *inputs):
     return None
 
   def builtin_parameter(self, op):

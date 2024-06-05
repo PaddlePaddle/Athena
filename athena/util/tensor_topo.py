@@ -26,6 +26,8 @@ def GetOpId2OpPipeInOutNamesSignature(
   op_id2used = GetOpId2TensorNamesUsedByMeAndDownstream(
     func, free_vars, args, get_local_name
   )
+  if len(op_id2used) == 0:
+    return {}
   extractor = InputOutputTensorsExtractor(func)
   input_tensors, output_tensors = extractor.Extract(free_vars, args)
   def get_in_names_list():
@@ -33,7 +35,8 @@ def GetOpId2OpPipeInOutNamesSignature(
       names_used_by_me_and_downstream
       for _, names_used_by_me_and_downstream in op_id2used.items()
     ]
-    in_names_list[0] = [get_local_name(t) for t in input_tensors]
+    if len(in_names_list) > 0:
+      in_names_list[0] = [get_local_name(t) for t in input_tensors]
     return in_names_list
 
   def get_out_names_list():
