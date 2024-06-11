@@ -122,7 +122,7 @@ class OpInputShapesExtractor:
 {%- if data != None -%}
     paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
 {%- elif big_dtype == "bool" -%}
-    paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int8'), 'bool')
+    paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
 {%- elif big_dtype == "int64" -%}
     paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='{{dtype}}')
 {%- elif big_dtype == "float64" -%}
