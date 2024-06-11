@@ -173,6 +173,10 @@ class PaddleOpCallGenerator:
     op_call_str = self._GenerateOpCall(op, *inputs)
     return f"{op_call_str}, None"
 
+  def pd_op_squeeze(self, op, *inputs):
+    op_call_str = self._GenerateOpCall(op, *inputs)
+    return f"{op_call_str}, None"
+
   def pd_op_assign(self, op, x):
     return x.name
 
@@ -218,6 +222,9 @@ class PaddleOpCallGenerator:
 
   def pd_op_matmul(self, op, x, y):
     return f"{self.m}.matmul({x.name}, {y.name}, transpose_x={op.attrs['transpose_x']}, transpose_y={op.attrs['transpose_y']})"
+
+  def pd_op_share_data_(self, op, x):
+    return f"{x.name}.detach()"
 
   def pd_op_split(self, op, x, y, z):
     return f"{self.m}.split({x.name}, {y.name}, {z.name})"

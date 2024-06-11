@@ -53,6 +53,6 @@ class ExampleInputsMetaGetter:
       input_meta_key2value[key] = InputMeta(
         name=record.input_name,
         shape=record.shape,
-        data=None
+        data=record.data if hasattr(record, 'data') else None,
       )
     return input_meta_key2value
