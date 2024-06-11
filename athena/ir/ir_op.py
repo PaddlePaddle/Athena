@@ -32,7 +32,7 @@ class Op:
     if self.name == 'pd_op.data':
       return self.attrs['name'].value
     if self.name == 'builtin.parameter':
-      return self.attrs['name'].value
+      return self.attrs['parameter_name'].value
     return None
   
   def GetResultTensorName(self, i):

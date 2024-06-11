@@ -27,6 +27,7 @@ type2bigger_type = dict(
   bfloat16="float64",
   float16="float64",
   float32="float64",
+  float64="float64",
   int16="int64",
   int32="int64",
   int64="int64",

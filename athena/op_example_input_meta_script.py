@@ -88,16 +88,17 @@ def ExtractInputTensors(ir_program):
 
 def HasExampleInputs(ir_program, example_inputs_meta_getter):
   input_tensors = ExtractInputTensors(ir_program)
-  return example_inputs_meta_getter.HasAllInputNames(
+  return example_inputs_meta_getter.HasAllInputExamples(
     program_id=int(type(ir_program).__name__[len('PirProgram_'):]),
-    input_names=[t.arg_name_as_input for t in input_tensors]
+    input_tensors=input_tensors
   )
 
 def GetOutputUnittests(original_programs_file, example_inputs_file):
   example_inputs_meta_getter = MakeExampleInputsMetaGetter(example_inputs_file)
+  classes = GetProgramClasses(original_programs_file)
   ir_programs = (
     ir_program
-    for cls in GetProgramClasses(original_programs_file)
+    for cls in classes
     for ir_program in [cls()]
     if not IsBackwardProgram(ir_program)
     if not IsProgramEmpty(ir_program)

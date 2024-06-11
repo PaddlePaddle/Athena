@@ -152,6 +152,8 @@ class PaddleFuncBodyGenerator:
     stmts = GetStmtPyCode(local_output_tensor_names, op, *input_local_tensors, **kwargs)
     if len(stmts) == 0:
       return op.GetResults()
+    def GetTensorName(tensor):
+      return tensor.name if tensor is not None else "None"
     self.stmts.append(PyCodeStmt(
       op_name=op.name,
       op_id=op.op_id,
@@ -159,7 +161,7 @@ class PaddleFuncBodyGenerator:
         key=op.op_id,
         prefix=f"op_{op.GetNameSuffix()}",
       ),
-      input_tensor_names=[t.name for t in input_local_tensors],
+      input_tensor_names=[GetTensorName(t) for t in input_local_tensors],
       inputs_type_strs=inputs_type_strs,
       outputs_type_strs=outputs_type_strs,
       inputs_shape_symbol_strs=inputs_shape_symbol_strs,

@@ -42,7 +42,7 @@ class ModuleOpUnittestGenerator:
       if tensor.arg_name_as_input is not None:
         tensor_meta = self.example_inputs_meta_getter.Get(
           program_id=self.program_id,
-          input_name=tensor.arg_name_as_input,
+          input_tensor=tensor,
         )
         return tensor_meta.shape
       else:
