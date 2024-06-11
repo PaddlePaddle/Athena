@@ -177,6 +177,10 @@ class PaddleOpCallGenerator:
     op_call_str = self._GenerateOpCall(op, *inputs)
     return f"{op_call_str}, None"
 
+  def pd_op_flatten(self, op, *inputs):
+    op_call_str = self._GenerateOpCall(op, *inputs)
+    return f"{op_call_str}, None"
+
   def pd_op_assign(self, op, x):
     return x.name
 
