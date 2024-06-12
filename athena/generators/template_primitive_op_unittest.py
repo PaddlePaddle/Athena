@@ -52,7 +52,7 @@ def IsInteger(dtype):
     return np.dtype(dtype).char in np.typecodes['AllInteger']
 
 
-class TestBase:
+class CinnTestBase:
     def setUp(self):
         paddle.seed(2024)
         self.prepare_data()
@@ -89,14 +89,14 @@ class TestBase:
 {%- set min = tensor_meta.min -%}
 {%- set max = tensor_meta.max -%}
 {%- if data != None -%}
-    paddle.to_tensor({{data}}, dtype='{{dtype}}')
+    paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
 {%- elif big_dtype == "bool" -%}
-    paddle.zeros({{shape}}, dtype='{{dtype}}')
+    paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
 {%- elif big_dtype == "int64" -%}
     paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='{{dtype}}')
 {%- elif big_dtype == "float64" -%}
     paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
-{%- endif %}
+{%- endif -%}
 {%- endmacro %}
 
 {%- for op in ops %}
@@ -109,7 +109,7 @@ class PrimitiveOp{{op_idx}}(paddle.nn.Layer):
     def forward(self, {{ op.input_tensor_names | join(", ") }}):
         return {{ op.op_expr }}
 
-class TestPrimitiveOp{{op_idx}}(TestBase, unittest.TestCase):
+class TestPrimitiveOp{{op_idx}}(CinnTestBase, unittest.TestCase):
     def prepare_data(self):
         self.inputs = [
         {%- for example_tensor_meta in op.example_inputs_meta %}

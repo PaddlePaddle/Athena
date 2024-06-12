@@ -14,11 +14,13 @@ from absl import flags
 import hashlib
 import os
 import glob
+import itertools
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
 flags.DEFINE_string("input_dir", "./input-dir", "input directory.")
+flags.DEFINE_integer("bucket_size", 128, "bucket size.")
 flags.DEFINE_string("output_file_prefix", "tmp_op_example_input_", "input file prefix")
 
 def main(argv):
@@ -104,8 +106,16 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
     if not IsProgramEmpty(ir_program)
     if HasExampleInputs(ir_program, example_inputs_meta_getter)
   )
-  for ir_program in ir_programs:
-    generator = OpExampleInputMetaScriptGenerator(ir_program, example_inputs_meta_getter)
+  def GetBucket(elem):
+    i, _ = elem
+    return i // FLAGS.bucket_size
+  ir_program_groups = itertools.groupby(enumerate(ir_programs), GetBucket)
+  for _, ir_program_group in ir_program_groups:
+    ir_program_group = [x for _, x in ir_program_group]
+    generator = OpExampleInputMetaScriptGenerator(
+      ir_program_group,
+      example_inputs_meta_getter
+    )
     name, unittest = generator.Generate()
     yield name, unittest
 

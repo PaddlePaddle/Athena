@@ -43,70 +43,21 @@ def InitTensorData(tensor):
 def IsInteger(dtype):
     return np.dtype(dtype).char in np.typecodes['AllInteger']
 
+def GetRecordClass(program_id, op_id, op_name, input_idx, shape, data):
+    return f"""
+class PirProgram_op_input_tensor_meta_{random.randint(0, sys.maxsize)}:
+    program_id = {program_id}
+    op_id = {op_id}
+    op_name = "{op_name}"
+    input_idx = {input_idx}
+    shape = {str(shape)}
+    data = {str(data)}
 
-op_input2shape = {}
-op_input2data = {}
+"""
 
-def GetInputMetaRecorder(op_name, op_id, *inputs):
-    def AllInitialized():
-        return all(
-            (op_id, input_idx) in op_input2shape
-            for input_idx in range(len(inputs))
-        )
-    if AllInitialized():
-        return lambda: None
-    for input_idx in range(len(inputs)):
-        op_input2shape[(op_id, input_idx)] = InitTensorShape(inputs[input_idx])
-        op_input2data[(op_id, input_idx)] = InitTensorData(inputs[input_idx])
-    def Record():
-        for input_idx in range(len(inputs)):
-            AppendRecordClassToOutputFile(GetRecordClass(
-                program_id={{program_id}},
-                op_id=op_id,
-                op_name=op_name,
-                input_idx=input_idx,
-                shape=op_input2shape.get((op_id, input_idx), None),
-                data=op_input2data.get((op_id, input_idx), None),
-            ))
-    return Record
-
-def AllShapesInfered():
-    {% for block in blocks %}
-    {% for stmt in block.stmts %}
-    {%- for input_tensor_name in stmt.input_tensor_names %}
-    {%- set input_idx = loop.index0 %}
-    if ({{stmt.op_id}}, {{input_idx}}) not in op_input2shape:
-        return False
-    {%- endfor %}
-    {%- endfor %}
-    {%- endfor %}
-    return True
-
-class OpInputShapesExtractor:
-{%- for block in blocks %}
-{%- set block_idx = loop.index0 %}
-
-    def {{block.block_name}}(self, {{block.input_arg_names | join(", ")}}):
-        
-    {%- for stmt in block.stmts %}
-        # ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
-        recorder = GetInputMetaRecorder("{{stmt.op_name}}", {{stmt.op_id}}, {{stmt.input_tensor_names | join(", ")}})
-        {%- for pycode in stmt.pycode %}
-        {%- if pycode.num_tabs == 0 %}
-        {{pycode.pycode}}
-        {%- elif pycode.num_tabs == 1 %}
-            {{pycode.pycode}}
-        {%- elif pycode.num_tabs == 2 %}
-                {{pycode.pycode}}
-        {%- else %}
-        raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
-        {%- endif %}
-        {%- endfor %}
-        recorder()
-        
-    {%- endfor %}
-        return {{block.output_arg_names | join(", ")}}
-{%- endfor %}
+def AppendRecordClassToOutputFile(content):
+    with open(FLAGS.output_file, 'a') as f:
+            f.write(content)
 
 {% macro get_input_shape_instance(block, block_idx, input_idx) -%}
     {{block.input_tensor_descs[input_idx].shape}}
@@ -130,7 +81,72 @@ class OpInputShapesExtractor:
 {%- endif -%}
 {%- endmacro -%}
 
-def InferAndSaveOpInputDims(argv):
+
+{% for program_id, blocks in programs %}
+def InferAndSaveOpInputDims_Program{{program_id}}():
+    op_input2shape = {}
+    op_input2data = {}
+
+    def GetInputMetaRecorder(op_name, op_id, *inputs):
+        def AllInitialized():
+            return all(
+                (op_id, input_idx) in op_input2shape
+                for input_idx in range(len(inputs))
+            )
+        if AllInitialized():
+            return lambda: None
+        for input_idx in range(len(inputs)):
+            op_input2shape[(op_id, input_idx)] = InitTensorShape(inputs[input_idx])
+            op_input2data[(op_id, input_idx)] = InitTensorData(inputs[input_idx])
+        def Record():
+            for input_idx in range(len(inputs)):
+                AppendRecordClassToOutputFile(GetRecordClass(
+                    program_id={{program_id}},
+                    op_id=op_id,
+                    op_name=op_name,
+                    input_idx=input_idx,
+                    shape=op_input2shape.get((op_id, input_idx), None),
+                    data=op_input2data.get((op_id, input_idx), None),
+                ))
+        return Record
+
+    def AllShapesInfered():
+        {% for block in blocks %}
+        {% for stmt in block.stmts %}
+        {%- for input_tensor_name in stmt.input_tensor_names %}
+        {%- set input_idx = loop.index0 %}
+        if ({{stmt.op_id}}, {{input_idx}}) not in op_input2shape:
+            return False
+        {%- endfor %}
+        {%- endfor %}
+        {%- endfor %}
+        return True
+
+    class OpInputShapesExtractor:
+    {%- for block in blocks %}
+    {%- set block_idx = loop.index0 %}
+
+        def {{block.block_name}}(self, {{block.input_arg_names | join(", ")}}):
+            
+        {%- for stmt in block.stmts %}
+            # ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+            recorder = GetInputMetaRecorder("{{stmt.op_name}}", {{stmt.op_id}}, {{stmt.input_tensor_names | join(", ")}})
+            {%- for pycode in stmt.pycode %}
+            {%- if pycode.num_tabs == 0 %}
+            {{pycode.pycode}}
+            {%- elif pycode.num_tabs == 1 %}
+                {{pycode.pycode}}
+            {%- elif pycode.num_tabs == 2 %}
+                    {{pycode.pycode}}
+            {%- else %}
+            raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
+            {%- endif %}
+            {%- endfor %}
+            recorder()
+            
+        {%- endfor %}
+            return {{block.output_arg_names | join(", ")}}
+    {%- endfor %}
     extractor = OpInputShapesExtractor()
     for _ in range(FLAGS.max_try_cnt):
     {%- for block in blocks %}
@@ -146,22 +162,12 @@ def InferAndSaveOpInputDims(argv):
     {%- endfor %}
         if AllShapesInfered():
             break
+{% endfor %}
 
-def GetRecordClass(program_id, op_id, op_name, input_idx, shape, data):
-    return f"""
-class PirProgram_op_input_tensor_meta_{random.randint(0, sys.maxsize)}:
-    program_id = {program_id}
-    op_id = {op_id}
-    op_name = "{op_name}"
-    input_idx = {input_idx}
-    shape = {str(shape)}
-    data = {str(data)}
-
-"""
-
-def AppendRecordClassToOutputFile(content):
-    with open(FLAGS.output_file, 'a') as f:
-            f.write(content)
+def InferAndSaveOpInputDims(argv):
+{%- for program_id, blocks in programs %}
+    InferAndSaveOpInputDims_Program{{program_id}}()
+{%- endfor %}
 
 if __name__ == '__main__':
     app.run(InferAndSaveOpInputDims)
