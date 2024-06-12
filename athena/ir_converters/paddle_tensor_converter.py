@@ -13,6 +13,7 @@ class PaddleTensorConverter:
       local_name_prefix=tensor.local_name_prefix,
       name=tensor.name,
       arg_name_as_input=tensor.arg_name_as_input,
+      defining_op_name=tensor.defining_op_name,
       type=ir_type.DenseTensorType(
         tensor.shape,
         paddle_type_converter.ConvertTypeToString(tensor.dtype)
@@ -26,6 +27,7 @@ class PaddleTensorConverter:
       local_name_prefix=tensor.local_name_prefix,
       name=tensor.name,
       arg_name_as_input=tensor.arg_name_as_input,
+      defining_op_name=tensor.defining_op_name,
       type=ir_type.VectorType(
         value=[
           ir_type.DenseTensorType(

@@ -15,6 +15,7 @@ class GlobalTensorConverter:
         local_name_prefix=prefix,
         name=f"{prefix}_{self._GetLocalNameSeqNo(prefix)}",
         arg_name_as_input=tensor.arg_name_as_input,
+        defining_op_name=tensor.defining_op_name,
         type=tensor.type,
         dim_exprs=tensor.dim_exprs
       )

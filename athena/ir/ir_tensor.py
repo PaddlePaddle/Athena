@@ -9,6 +9,7 @@ class Tensor:
   local_name_prefix: str
   name: str
   arg_name_as_input: t.Optional[str]
+  defining_op_name: t.Optional[str]
   type: "Type"
   dim_exprs: ShapeOrDataDimExprs
 

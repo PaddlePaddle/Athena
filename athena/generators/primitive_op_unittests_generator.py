@@ -95,6 +95,7 @@ class PrimitiveOpUnittestsGenerator:
           local_name_prefix="in_",
           name=f"input_{input_idx}",
           arg_name_as_input=None,
+          defining_op_name=None,
           type=input_type,
           dim_exprs=ir_symbol.NullShapeOrDataDimExprs()
         )

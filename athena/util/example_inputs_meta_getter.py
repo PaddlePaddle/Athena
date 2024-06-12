@@ -2,6 +2,7 @@ from collections import namedtuple
 from dataclasses import dataclass
 import athena.ir.ir_type as ir_type
 import typing as t
+from functools import reduce
 
 InputMetaKey = namedtuple('InputMetaKey', ['program_id', 'input_name'])
 
@@ -22,8 +23,25 @@ class ExampleInputsMetaGetter:
     key = InputMetaKey(program_id, input_tensor.arg_name_as_input)
     if key in self.input_meta_key2value:
       return True
-    shape = self.GetInputStaticShape(input_tensor)
-    return shape is not None
+    static_shape = self.GetInputStaticShape(input_tensor)
+    if static_shape is None:
+      return False
+    if input_tensor.defining_op_name == "builtin.parameter":
+      return True
+    if self.IsSmallIntegerTensor(static_shape, input_tensor.dtype):
+      return False
+    return True
+
+  def IsSmallIntegerTensor(self, shape, dtype):
+    return self.IsSmallTensor(shape) and self.IsIntegerTensor(dtype)
+
+  def IsSmallTensor(self, shape):
+    if len(shape) == 0:
+      return True
+    return reduce(lambda x, y: x * y, shape) <= 64
+
+  def IsIntegerTensor(self, dtype):
+    return isinstance(dtype, ir_type.Int32Type) or isinstance(dtype, ir_type.Int64Type)
 
   def Get(self, program_id, input_tensor) -> InputMeta:
     key = InputMetaKey(program_id, input_tensor.arg_name_as_input)

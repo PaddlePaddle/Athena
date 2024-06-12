@@ -24,6 +24,7 @@ class Op:
       local_name_prefix=self.GetNameSuffix(),
       name=self.GetResultTensorName(i),
       arg_name_as_input=self.GetArgNameAsInput(),
+      defining_op_name=self.name,
       type=self.output_types[i],
       dim_exprs=self.__results_symbols_signature__.value[i].value
     )

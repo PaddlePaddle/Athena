@@ -11,6 +11,7 @@ class CinnUnittestGenerator:
       return Tensor(
         local_name_prefix="arg",
         arg_name_as_input=None,
+        defining_op_name=None,
         name=arg_name,
         type=inputs[i].type,
         dim_exprs=inputs[i].dim_exprs
