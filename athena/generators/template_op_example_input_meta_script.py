@@ -36,7 +36,9 @@ def InitTensorData(tensor):
     if not hasattr(tensor, 'numpy'):
         raise NotImplementedError(f"type(tensor): {type(tensor)}")
     ndarray = tensor.numpy()
-    if not IsInteger(ndarray.dtype):
+    if np.isnan(ndarray).any():
+        return None
+    if np.isinf(ndarray).any():
         return None
     return ndarray.tolist()
 
