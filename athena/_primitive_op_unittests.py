@@ -18,6 +18,7 @@ from itertools import groupby
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
+flags.DEFINE_boolean("is_dynamic", True, "generate dynamic shape unittests if is_dynamic is True")
 flags.DEFINE_string("input_dir", "./input-dir", "input directory.")
 
 def main(argv):
@@ -78,7 +79,10 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
     for name, ops in groupby(sorted(ops, key=GetPyVarName), key=GetPyVarName)
   ]
   for name, uid_and_ops in grouped_ops:
-    generator = PrimitiveOpUnittestsGenerator(op_example_inputs_meta_getter)
+    generator = PrimitiveOpUnittestsGenerator(
+      is_dynamic=FLAGS.is_dynamic,
+      op_example_inputs_meta_getter=op_example_inputs_meta_getter,
+    )
     uid_and_ops = [
       (program_id, op)
       for program_id, op in uid_and_ops

@@ -51,8 +51,45 @@ def GetFloat32Tolerance():
 def IsInteger(dtype):
     return np.dtype(dtype).char in np.typecodes['AllInteger']
 
+def ApplyToStatic(net, use_cinn):
+    build_strategy = paddle.static.BuildStrategy()
+    build_strategy.build_cinn_pass = use_cinn
+    return paddle.jit.to_static(
+        net,
+        input_spec=net.get_input_spec(),
+        build_strategy=build_strategy,
+        full_graph=True,
+    )
+
+class InstanceTrait:
+
+    @classmethod
+    def instance(cls):
+        if cls.instance_ is None:
+            cls.instance_ = cls()
+        return cls.instance_
+
+    @classmethod
+    def static_instance_with_cinn(cls):
+        if cls.static_instance_with_cinn_ is None:
+            cls.static_instance_with_cinn_ = ApplyToStatic(
+                cls.instance(),
+                use_cinn=True
+            )
+        return cls.static_instance_with_cinn_
+
+    @classmethod
+    def static_instance_without_cinn(cls):
+        if cls.static_instance_without_cinn_ is None:
+            cls.static_instance_without_cinn_ = ApplyToStatic(
+                cls.instance(),
+                use_cinn=False
+            )
+        return cls.static_instance_without_cinn_
+
 
 class CinnTestBase:
+
     def setUp(self):
         paddle.seed(2024)
         self.prepare_data()
@@ -67,6 +104,28 @@ class CinnTestBase:
               self.assert_all_close(x, y)
           else:
             self.assert_all_close(cinn_out, dy_out)
+
+    def train(self, use_cinn):
+        if GetEnvVarEnableJit():
+            net = self.prepare_static_net(use_cinn)
+        else:
+            net = self.prepare_net()
+        out = net(*self.inputs)
+        return out
+    
+    def prepare_data(self):
+        self.inputs = self.get_inputs()
+        for input in self.inputs:
+            input.stop_gradient = True
+
+    def prepare_net(self):
+        return self.get_test_class().instance()
+
+    def prepare_static_net(self, use_cinn):
+        if use_cinn:
+            return self.get_test_class().static_instance_with_cinn()
+        else:
+            return self.get_test_class().static_instance_without_cinn()
 
     def assert_all_close(self, x, y):
         if (hasattr(x, "numpy") and hasattr(y, "numpy")):
@@ -99,50 +158,57 @@ class CinnTestBase:
 {%- endif -%}
 {%- endmacro %}
 
-{%- for op in ops %}
-{%- set op_idx = loop.index0 %}
-
-class PrimitiveOp{{op_idx}}(paddle.nn.Layer):
+{% macro get_primitive_class_methods(op) %}
     def __init__(self):
         super().__init__()
 
     def forward(self, {{ op.input_tensor_names | join(", ") }}):
         return {{ op.op_expr }}
 
-class TestPrimitiveOp{{op_idx}}(CinnTestBase, unittest.TestCase):
-    def prepare_data(self):
-        self.inputs = [
-        {%- for example_tensor_meta in op.example_inputs_meta %}
-            {{get_input_tensor_instance(example_tensor_meta)}},
-        {%- endfor %}
-        ]
-        for input in self.inputs:
-            input.stop_gradient = True
-
-    def apply_to_static(self, net, use_cinn):
-        build_strategy = paddle.static.BuildStrategy()
-        input_spec = [
+    def get_input_spec(self):
+        return [
         {%- for shape, dtype in op.input_spec_shape_dtypes %}
         {%- set input_idx = loop.index0 %}
             paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
         {%- endfor %}
         ]
-        build_strategy.build_cinn_pass = use_cinn
-        return paddle.jit.to_static(
-            net,
-            input_spec=input_spec,
-            build_strategy=build_strategy,
-            full_graph=True,
-        )
+        
+    instance_ = None
+    static_instance_with_cinn_ = None
+    static_instance_without_cinn_ = None
 
-    def train(self, use_cinn):
-        net = PrimitiveOp{{op_idx}}()
-        if GetEnvVarEnableJit():
-            net = self.apply_to_static(net, use_cinn)
-        out = net(*self.inputs)
-        return out
+{% endmacro %}
 
-{%- endfor %}
+{%- macro get_primitive_class_name(op) -%}
+PrimitiveOp_{{get_sha_hash_prefix(get_primitive_class_methods(op))}}
+{%- endmacro -%}
+
+{% macro get_test_class_methods(op) %}
+    def get_test_class(self):
+        return {{get_primitive_class_name(op)}}
+    def get_inputs(self):
+        return [
+        {%- for example_tensor_meta in op.example_inputs_meta %}
+            {{get_input_tensor_instance(example_tensor_meta)}},
+        {%- endfor %}
+        ]
+{% endmacro %}
+
+{%- macro get_test_class_name(op) -%}
+TestPrimitiveOp_{{get_sha_hash_prefix(get_test_class_methods(op))}}
+{%- endmacro -%}
+
+{%- for op in ops %}
+{%- if not is_cached_before(get_primitive_class_name(op)) -%}
+class {{get_primitive_class_name(op)}}(InstanceTrait, paddle.nn.Layer):
+    {{get_primitive_class_methods(op)}}
+{{cache(get_primitive_class_name(op))}}
+{%- endif -%}
+
+class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
+    {{get_test_class_methods(op)}}
+
+{% endfor %}
 
 if __name__ == '__main__':
     unittest.main()

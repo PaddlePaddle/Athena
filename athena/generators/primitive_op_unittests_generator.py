@@ -13,6 +13,7 @@ import athena.ir.ir_symbol as ir_symbol
 from collections import namedtuple
 import os
 from jinja2 import Template
+import hashlib
 
 InputSpecDesc = namedtuple("InputSpecDesc", [
   "shape",
@@ -28,7 +29,8 @@ class PrimitiveOpStmt:
 
 class PrimitiveOpUnittestsGenerator:
 
-  def __init__(self, op_example_inputs_meta_getter):
+  def __init__(self, is_dynamic, op_example_inputs_meta_getter):
+    self.is_dynamic = is_dynamic
     self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
     self.paddle_op_call_generator = PaddleOpCallGenerator()
 
@@ -64,21 +66,28 @@ class PrimitiveOpUnittestsGenerator:
     return [t.name for t in self.GetInputTensors(op)]
   
   def GetInputSpecShapeAndDtype(self, programd_id, op):
+    def GetInputSpecShape(input_idx):
+      example_tensor_meta = self.GetExampleTensorMeta(programd_id, op, input_idx)
+      shape = example_tensor_meta.shape
+      return [None for _ in shape] if self.is_dynamic else shape
     return [
       InputSpecDesc(
-        shape=[(dim if dim >= 0 else None) for dim in tensor.shape],
+        shape=GetInputSpecShape(input_idx),
         dtype=tensor.dtype
       )
-      for tensor in self.GetInputTensors(op)
+      for input_idx, tensor in enumerate(self.GetInputTensors(op))
     ]
+
+  def GetExampleTensorMeta(self, programd_id, op, input_idx):
+    return self.op_example_inputs_meta_getter.Get(
+      programd_id,
+      op.op_id,
+      input_idx
+    )
   
   def GetExampleInputsMeta(self, programd_id, op):
     def GetExampleTensorMeta(input_idx):
-      return self.op_example_inputs_meta_getter.Get(
-        programd_id,
-        op.op_id,
-        input_idx
-      )
+      return self.GetExampleTensorMeta(programd_id, op, input_idx)
     return [
       MakeInputTensorDesc(
         input_tensor,
@@ -105,9 +114,21 @@ class PrimitiveOpUnittestsGenerator:
   
   def _RenderTemplate(self, ops):
     template = self._GetTemplate("template_primitive_op_unittest.py")
-    return template.render(ops=ops)
+    cached_test_class_names = set()
+    empty_str = lambda x:""
+    return template.render(
+      ops=ops,
+      get_sha_hash_prefix=lambda x: GetSha256sum(x)[0:32],
+      is_cached_before=lambda x: x in cached_test_class_names,
+      cache=lambda x: empty_str(cached_test_class_names.add(x))
+    )
 
   def _GetTemplate(self, template_name):
     dir_path = os.path.dirname(os.path.realpath(__file__))
     with open(f"{dir_path}/{template_name}", "r") as f:
       return Template(f.read())
+
+def GetSha256sum(content):
+  m = hashlib.sha256()
+  m.update(content.encode())
+  return m.hexdigest()
