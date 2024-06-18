@@ -10,7 +10,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("ir_programs", "", "ir programs file.")
 flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
 flags.DEFINE_string("output_dir", "", "output directory.")
-flags.DEFINE_boolean("is_dynamic", True, "generate dynamic shape unittests if is_dynamic is True")
+flags.DEFINE_enum("input_spec_mode", "default", ["default", "pure_static", "pure_dynamic"], "generate dynamic shape unittests if input_spec_mode is pure_dynamic")
 flags.DEFINE_string("tmp_dir", "", "temp directory.")
 
 
@@ -37,7 +37,7 @@ def Main(tmp_dir):
     os.remove(file)
   System(f"{sys.executable} -m athena.op_example_input_meta_script --output_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir}")
   System(f"{sys.executable} -m athena.op_example_input_meta_result --input_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir}")
-  System(f"{sys.executable} -m athena._primitive_op_unittests --is_dynamic={FLAGS.is_dynamic} --input_dir={tmp_dir} --output_dir={FLAGS.output_dir}")
+  System(f"{sys.executable} -m athena._primitive_op_unittests --input_spec_mode={FLAGS.input_spec_mode} --input_dir={tmp_dir} --output_dir={FLAGS.output_dir}")
   sys.exit(exit_code)
 
 exit_code = 0

@@ -29,8 +29,8 @@ class PrimitiveOpStmt:
 
 class PrimitiveOpUnittestsGenerator:
 
-  def __init__(self, is_dynamic, op_example_inputs_meta_getter):
-    self.is_dynamic = is_dynamic
+  def __init__(self, input_spec_mode, op_example_inputs_meta_getter):
+    self.input_spec_mode = input_spec_mode
     self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
     self.paddle_op_call_generator = PaddleOpCallGenerator()
 
@@ -66,13 +66,20 @@ class PrimitiveOpUnittestsGenerator:
     return [t.name for t in self.GetInputTensors(op)]
   
   def GetInputSpecShapeAndDtype(self, programd_id, op):
-    def GetInputSpecShape(input_idx):
-      example_tensor_meta = self.GetExampleTensorMeta(programd_id, op, input_idx)
-      shape = example_tensor_meta.shape
-      return [None for _ in shape] if self.is_dynamic else shape
+    if self.input_spec_mode == "default":
+      def GetInputSpecShape(input_idx, tensor):
+        return [(dim if dim >= 0 else None) for dim in tensor.shape]
+    elif self.input_spec_mode == "pure_dynamic":
+      def GetInputSpecShape(input_idx, tensor):
+        return [None for _ in tensor.shape]
+    elif self.input_spec_mode == "pure_static":
+      def GetInputSpecShape(input_idx, tensor):
+        return self.GetExampleTensorMeta(programd_id, op, input_idx).shape
+    else:
+      raise NotImplementedError
     return [
       InputSpecDesc(
-        shape=GetInputSpecShape(input_idx),
+        shape=GetInputSpecShape(input_idx, tensor),
         dtype=tensor.dtype
       )
       for input_idx, tensor in enumerate(self.GetInputTensors(op))
