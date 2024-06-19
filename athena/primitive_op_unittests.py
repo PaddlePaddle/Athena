@@ -35,6 +35,8 @@ def Main(tmp_dir):
   file_prefix = "tmp_op_example_input_"
   for file in glob.glob(f"{tmp_dir}/{file_prefix}*.py"):
     os.remove(file)
+  for file in glob.glob(f"{FLAGS.output_dir}/test_*.py"):
+    os.remove(file)
   System(f"{sys.executable} -m athena.op_example_input_meta_script --output_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir}")
   System(f"{sys.executable} -m athena.op_example_input_meta_result --input_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir}")
   System(f"{sys.executable} -m athena._primitive_op_unittests --input_spec_mode={FLAGS.input_spec_mode} --input_dir={tmp_dir} --output_dir={FLAGS.output_dir}")

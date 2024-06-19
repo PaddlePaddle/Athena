@@ -1,10 +1,16 @@
 import os
-os.environ['FLAGS_cinn_new_group_scheduler'] = '1'
-os.environ['FLAGS_group_schedule_tiling_first'] = '1'
-os.environ['FLAGS_prim_all'] = 'true'
-os.environ['FLAGS_prim_enable_dynamic'] = '1'
-os.environ['FLAGS_enable_pir_api'] = '1'
-os.environ['FLAGS_cinn_bucket_compile'] = '1'
+if os.getenv('FLAGS_cinn_new_group_scheduler') is None:
+    os.environ['FLAGS_cinn_new_group_scheduler'] = '1'
+if os.getenv('FLAGS_group_schedule_tiling_first') is None:
+    os.environ['FLAGS_group_schedule_tiling_first'] = '1'
+if os.getenv('FLAGS_prim_all') is None:
+    os.environ['FLAGS_prim_all'] = 'true'
+if os.getenv('FLAGS_prim_enable_dynamic') is None:
+    os.environ['FLAGS_prim_enable_dynamic'] = '1'
+if os.getenv('FLAGS_enable_pir_api') is None:
+    os.environ['FLAGS_enable_pir_api'] = '1'
+if os.getenv('FLAGS_cinn_bucket_compile') is None:
+    os.environ['FLAGS_cinn_bucket_compile'] = '1'
 
 import unittest
 import numpy as np

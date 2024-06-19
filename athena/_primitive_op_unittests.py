@@ -2,10 +2,16 @@ from athena.util.load_pir_py_classes import (
   GetProgramClasses,
   GetClasses
 )
-from athena.util.op_example_inputs_meta_getter import OpExampleInputsMetaGetter
+from athena.util.op_example_inputs_meta_getter import (
+  MakeOpExampleInputsMetaGetter,
+)
 from athena.util.primitive_op_extractor import PrimitiveOpExtractor
 from athena.generators.primitive_op_unittests_generator import (
   PrimitiveOpUnittestsGenerator
+)
+from athena.util.ir_program_util import (
+  IsBackwardProgram,
+  GetProgramId
 )
 import athena.ir.ir_op as ir_op
 import athena.ir.ir_type as ir_type
@@ -45,19 +51,10 @@ def WriteToFile(filepath, unittest):
   with open(filepath, "w") as f:
     f.write(unittest)
 
-def IsBackwardProgram(ir_program):
-  for name, op in vars(ir_program).items():
-    if not isinstance(op, ir_op.Op):
-      continue
-    if op.name != "builtin.module":
-      continue
-    keyword_arg_names = op.block_keyword_arg_names[0][0]
-    if len(keyword_arg_names) > 0:
-      return True
-  return False
-
 def GetOutputUnittests(original_programs_file, op_example_inputs_file):
-  op_example_inputs_meta_getter = MakeOpExampleInputsMetaGetter(op_example_inputs_file)
+  op_example_inputs_meta_getter = MakeOpExampleInputsMetaGetter(
+    GetClasses(op_example_inputs_file)
+  )
   ir_programs = [
     ir_program
     for cls in GetProgramClasses(original_programs_file)
@@ -70,7 +67,6 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
     for ir_program in ir_programs
     for program_id in [GetProgramId(ir_program)]
     for op in primitive_op_extractor.Extract(ir_program)
-    if len(op.input_types) > 0
   ]
   def GetPyVarName(uid_and_op):
     return uid_and_op[1].GetPyVarName()
@@ -102,19 +98,6 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
       continue
     unittest = generator.Generate(uid_and_ops)
     yield name, unittest
-
-def GetProgramId(ir_program):
-  return int(type(ir_program).__name__[len('PirProgram_'):])
-
-def MakeOpExampleInputsMetaGetter(op_example_inputs_file):
-  classes = [
-    cls
-    for name, cls in GetClasses(op_example_inputs_file)
-    if name.startswith('PirProgram_op_input_tensor_meta_')
-  ]
-  return OpExampleInputsMetaGetter(
-    records=classes
-  )
 
 if __name__ == "__main__":
   app.run(main)

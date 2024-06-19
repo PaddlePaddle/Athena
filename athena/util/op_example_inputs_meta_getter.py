@@ -44,3 +44,14 @@ class OpExampleInputsMetaGetter:
         data=record.data,
       )
     return input_meta_key2value
+
+
+def MakeOpExampleInputsMetaGetter(name_and_classes):
+  classes = [
+    cls
+    for name, cls in name_and_classes
+    if name.startswith('PirProgram_op_input_tensor_meta_')
+  ]
+  return OpExampleInputsMetaGetter(
+    records=classes
+  )
