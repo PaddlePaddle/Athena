@@ -27,6 +27,8 @@ def GetEnvVarEnableJit():
 
 def GetEnvVarEnableCinn():
     enable_cinn = os.getenv('PADDLE_DEBUG_ENABLE_CINN')
+    if enable_cinn is None:
+        return {{PADDLE_DEBUG_ENABLE_CINN}}
     return enable_cinn not in {
         "0",
         "False",
@@ -154,7 +156,11 @@ class CinnTestBase:
 {%- set min = tensor_meta.min -%}
 {%- set max = tensor_meta.max -%}
 {%- if data != None -%}
+    {%- if data == [] and shape == [] -%}
+    paddle.to_tensor({{data}}, dtype='{{dtype}}')
+    {%- else -%}
     paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
+    {%- endif -%}
 {%- elif big_dtype == "bool" -%}
     paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
 {%- elif big_dtype == "int64" -%}
@@ -169,6 +175,13 @@ class CinnTestBase:
         super().__init__()
 
     def forward(self, {{ op.input_tensor_names | join(", ") }}):
+        {%- for example_tensor_meta in op.example_inputs_meta %}
+        {%- set input_idx = loop.index0 -%}
+        {%- set data = example_tensor_meta.data -%}
+        {%- if data != None and get_pos_arg_type_name(op, input_idx) == 'IntArray' %}
+        {{op.input_tensor_names[input_idx]}} = {{data}}
+        {%- endif -%}
+        {%- endfor %}
         return {{ op.op_expr }}
 
     def get_input_spec(self):

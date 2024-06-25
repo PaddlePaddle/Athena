@@ -114,19 +114,19 @@ class PaddleOpCallGenerator:
     return self._GenerateOpCall(op, *inputs)
 
   def _GenerateOpCall(self, op, *inputs):
-    cops_arg_names = GetCOpsArgNames(self.PaddleMethodName(op))
+    c_ops_arg_names = GetCOpsArgNames(self.PaddleMethodName(op))
     def ValidCOpsCall():
-      if cops_arg_names is None:
+      if c_ops_arg_names is None:
         return False
       attr_names = [
         attr_name
-        for attr_name in cops_arg_names
+        for attr_name in c_ops_arg_names
         if attr_name in op.attrs
       ]
-      assert len(inputs) + len(attr_names) == len(cops_arg_names), f"len(inputs): {len(inputs)}, attr_names: {attr_names}, cops_arg_names: {cops_arg_names}"
+      assert len(inputs) + len(attr_names) == len(c_ops_arg_names), f"op: {op.name}, len(inputs): {len(inputs)}, attr_names: {attr_names}, c_ops_arg_names: {c_ops_arg_names}"
       return True
     if ValidCOpsCall():
-      return self.GenerateCOpsCall(op, inputs, cops_arg_names)
+      return self.GenerateCOpsCall(op, inputs, c_ops_arg_names)
     return self.GenerateDefaultOpCall(self.m, op, *inputs)
 
   def PaddleMethodName(self, op):
@@ -172,6 +172,17 @@ class PaddleOpCallGenerator:
   def pd_op_dropout(self, op, *inputs):
     op_call_str = self._GenerateOpCall(op, *inputs)
     return f"{op_call_str}, None"
+
+  def pd_op_layer_norm(self, op, *inputs):
+    op_call_str = self._GenerateOpCall(op, *inputs)
+    return f"{op_call_str}, None, None"
+
+  def pd_op_huber_loss(self, op, *inputs):
+    op_call_str = self._GenerateOpCall(op, *inputs)
+    return f"{op_call_str}, None"
+
+  def pd_op_one_hot(self, op, x, num_classes):
+    return f"{self.m}._C_ops.one_hot({x.name} % {num_classes.name}, {num_classes.name})"
 
   def pd_op_squeeze(self, op, *inputs):
     op_call_str = self._GenerateOpCall(op, *inputs)

@@ -4,6 +4,7 @@ import sys
 import random
 from absl import app
 from absl import flags
+import traceback
 
 flags.DEFINE_integer("max_try_cnt", 10, "max try cnt")
 flags.DEFINE_string("output_file", "", "output file")
@@ -168,7 +169,10 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
 
 def InferAndSaveOpInputDims(argv):
 {%- for program_id, blocks in programs %}
-    InferAndSaveOpInputDims_Program{{program_id}}()
+    try:
+        InferAndSaveOpInputDims_Program{{program_id}}()
+    except Exception as e:
+        traceback.print_exc()
 {%- endfor %}
 
 if __name__ == '__main__':

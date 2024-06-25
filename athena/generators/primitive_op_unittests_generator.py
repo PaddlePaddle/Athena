@@ -14,6 +14,7 @@ from collections import namedtuple
 import os
 from jinja2 import Template
 import hashlib
+from athena.generators.paddle_c_ops_arg_names import op_name2args
 
 InputSpecDesc = namedtuple("InputSpecDesc", [
   "shape",
@@ -22,6 +23,7 @@ InputSpecDesc = namedtuple("InputSpecDesc", [
 
 @dataclass
 class PrimitiveOpStmt:
+  op: "Op"
   op_expr: str
   input_tensor_names: t.List[str]
   input_spec_shape_dtypes: t.List[InputSpecDesc]
@@ -37,6 +39,7 @@ class PrimitiveOpUnittestsGenerator:
   def Generate(self, uid_and_ops):
     ops = [
       PrimitiveOpStmt(
+        op=op,
         op_expr=self.GetOpExpr(programd_id, op),
         input_tensor_names=self.GetInputTensorNames(programd_id, op),
         input_spec_shape_dtypes=self.GetInputSpecShapeAndDtype(programd_id, op),
@@ -123,12 +126,35 @@ class PrimitiveOpUnittestsGenerator:
     template = self._GetTemplate("template_primitive_op_unittest.py")
     cached_test_class_names = set()
     empty_str = lambda x:""
+    PADDLE_DEBUG_ENABLE_CINN = os.getenv('PADDLE_DEBUG_ENABLE_CINN') not in {
+        "0",
+        "False",
+        "false",
+        "OFF",
+    }
     return template.render(
       ops=ops,
       get_sha_hash_prefix=lambda x: GetSha256sum(x)[0:32],
       is_cached_before=lambda x: x in cached_test_class_names,
-      cache=lambda x: empty_str(cached_test_class_names.add(x))
+      get_pos_arg_type_name=self.GetPosArgTypeName,
+      cache=lambda x: empty_str(cached_test_class_names.add(x)),
+      PADDLE_DEBUG_ENABLE_CINN=PADDLE_DEBUG_ENABLE_CINN,
     )
+
+  def GetPosArgTypeName(self, op_stmt, input_idx):
+    op = op_stmt.op
+    op_name = op.GetValidPyVarNameComponents()[-1]
+    if op_name not in op_name2args:
+      return False
+    args = op_name2args[op_name]
+    pos_arg_type_names = [
+      type_name
+      for type_name, arg_name in args
+      if arg_name not in op.attrs
+    ]
+    assert input_idx < len(pos_arg_type_names), f"op.name:{op.name}, args:{args}"
+    type_name = pos_arg_type_names[input_idx]
+    return type_name
 
   def _GetTemplate(self, template_name):
     dir_path = os.path.dirname(os.path.realpath(__file__))

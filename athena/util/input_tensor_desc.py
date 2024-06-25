@@ -38,16 +38,16 @@ class InitMinGetter:
     return "False" 
 
   def bfloat16():
-    return "-0.5" 
+    return "0" 
 
   def float16():
-    return "-0.5" 
+    return "0" 
 
   def float32():
-    return "-0.5" 
+    return "0" 
 
   def float64():
-    return "-0.5"
+    return "0"
 
   def int32():
     return "0"
@@ -73,8 +73,8 @@ class InitMaxGetter:
     return "0.5" 
     
   def int32():
-    return "2"
+    return "3"
 
   def int64():
-    return "2"
+    return "3"
 

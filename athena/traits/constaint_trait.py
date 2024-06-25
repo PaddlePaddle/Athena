@@ -7,17 +7,17 @@ class ConstraintAttr:
   def add_eq_cstr(self, lhs, rhs):
     if lhs == rhs:
       return
-    cstr = ir_constraint.EqualConstraint(lhs, rhs)
+    cstr = ir_constraint.EqualConstraintRecord(lhs, rhs)
     self.get_eq_cstrs().append(cstr)
 
   def add_broadcastable_cstr(self, lhs, rhs):
     if lhs == rhs:
       return
-    cstr = ir_constraint.BroadcastableConstraint(lhs, rhs)
+    cstr = ir_constraint.BroadcastableConstraintRecord(lhs, rhs)
     self.get_broadcastable_cstrs().append(cstr)
 
   def add_gt_one_cstr(self, dim_expr):
-    cstr = ir_constraint.GtOneConstraint(dim_expr)
+    cstr = ir_constraint.GtOneConstraintRecord(dim_expr)
     self.get_gt_one_cstrs().append(cstr)
 
   def get_eq_cstrs(self):
