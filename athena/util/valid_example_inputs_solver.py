@@ -982,7 +982,17 @@ class SymmetricDimsExpander:
     symmetric_dim_var: SymmetricDimVar,
     input_name2dim_ctx: t.Dict[SymbolName, Dim],
   ):
-    TODO
+    operands = symmetric_dim_var.symmetric_dim_vars
+    add_operands = self.RandomInferAddOperands(
+      dim=dim,
+      num_add_operands=len(symmetric_dim_var.symmetric_dim_vars),
+    )
+    for operand_dim, sub_symmetric_dim_var in zip(add_operands, operands):
+      self.CollectExpandedInputName2Dim(
+        dim=operand_dim,
+        symmetric_dim_var=sub_symmetric_dim_var,
+        input_name2dim_ctx=input_name2dim_ctx,
+      )
 
   def CollectExpandedInputName2Dim_MulSymmetricDimVar(
     self,
@@ -1016,3 +1026,9 @@ class SymmetricDimsExpander:
   ):
     TODO
 
+  def RandomInferAddOperands(
+    self,
+    dim: int,
+    num_add_operands: int,
+  ) -> t.List[int]:
+    TODO

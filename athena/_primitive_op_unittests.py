@@ -32,8 +32,7 @@ def main(argv):
   op_example_inputs_file = f"{FLAGS.input_dir}/op_example_input_meta_result.py"
   unittests = GetOutputUnittests(original_programs_file, op_example_inputs_file)
   for name, unittest in unittests:
-    sha256sum = GetSha256sum(unittest)
-    filepath = f"{FLAGS.output_dir}/test_{name}_{sha256sum[0:32]}.py"
+    filepath = f"{FLAGS.output_dir}/test_{name}.py"
     WriteToFile(filepath, unittest)
     PrintToTerminal(name, filepath, unittest)
 

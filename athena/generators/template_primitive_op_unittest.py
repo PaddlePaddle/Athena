@@ -1,20 +1,148 @@
 import os
-if os.getenv('FLAGS_cinn_new_group_scheduler') is None:
-    os.environ['FLAGS_cinn_new_group_scheduler'] = '1'
-if os.getenv('FLAGS_group_schedule_tiling_first') is None:
-    os.environ['FLAGS_group_schedule_tiling_first'] = '1'
-if os.getenv('FLAGS_prim_all') is None:
-    os.environ['FLAGS_prim_all'] = 'true'
-if os.getenv('FLAGS_prim_enable_dynamic') is None:
-    os.environ['FLAGS_prim_enable_dynamic'] = '1'
-if os.getenv('FLAGS_enable_pir_api') is None:
-    os.environ['FLAGS_enable_pir_api'] = '1'
-if os.getenv('FLAGS_cinn_bucket_compile') is None:
-    os.environ['FLAGS_cinn_bucket_compile'] = '1'
-
+import sys
 import unittest
 import numpy as np
+from dataclasses import dataclass
+import typing as t
+
+@dataclass
+class Stage:
+    name: str
+    env_vars: t.Dict[str, str]
+
+cinn_stages = [
+    Stage(
+        name="dynamic_to_static",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=False,
+            FLAGS_prim_all=False,
+            FLAGS_prim_enable_dynamic=False,
+        ),
+    ),
+    Stage(
+        name="prim",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=False,
+            FLAGS_prim_all=True,
+            FLAGS_prim_enable_dynamic=True,
+        ),
+    ),
+    Stage(
+        name="infer_symbolic",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=True,
+            FLAGS_prim_all=True,
+            FLAGS_prim_enable_dynamic=True,
+            FLAGS_use_cinn=False,
+            FLAGS_check_infer_symbolic=True,
+        ),
+    ),
+	Stage(
+        name="cinn_frontend_pass",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=True,
+            FLAGS_prim_all=True,
+            FLAGS_prim_enable_dynamic=True,
+            FLAGS_use_cinn=True,
+            FLAGS_check_infer_symbolic=False,
+            FLAGS_enable_fusion_fallback=True,
+        ), 
+    ),
+    Stage(
+        name="cinn_backend",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=True,
+            FLAGS_prim_all=True,
+            FLAGS_prim_enable_dynamic=True,
+            FLAGS_use_cinn=True,
+            FLAGS_check_infer_symbolic=False,
+            FLAGS_enable_fusion_fallback=False,
+        ), 
+    ),
+]
+
+def GetCinnStageByName(name):
+    for stage in cinn_stages:
+        if stage.name == name:
+            return stage
+    return None
+
+def GetCurrentCinnStage():
+    name = os.getenv('PADDLE_DEBUG_CINN_STAGE_NAME')
+    if name is None:
+        return None
+    stage_names = [stage.name for stage in cinn_stages]
+    assert name in stage_names, (
+        f"PADDLE_DEBUG_CINN_STAGE_NAME should be in {stage_names}"
+    )
+    return GetCinnStageByName(name)
+
+def GetPrevCinnStage(stage):
+    for i in range(1, len(cinn_stages)):
+        if stage is cinn_stages[i]:
+            return cinn_stages[i - 1]
+    return None
+
+def IsCinnStageEnableDiff():
+    value = os.getenv('PADDLE_DEBUG_CINN_STAGE_ENABLE_DIFF')
+    enabled = value in {
+        '1',
+        'true',
+        'True',
+    }
+    if enabled:
+        assert GetCurrentCinnStage() is not None
+    return enabled
+
+last_cinn_stage_exit_code = None
+def LastCINNStageFailed():
+    global last_cinn_stage_exit_code
+    if last_cinn_stage_exit_code is not None:
+        return last_cinn_stage_exit_code != 0
+    last_stage = GetPrevCinnStage(GetCurrentCinnStage())
+    if last_stage is None:
+        return False
+    env_vars = dict(
+        PADDLE_DEBUG_CINN_STAGE_NAME=last_stage.name,
+        PADDLE_DEBUG_CINN_STAGE_ENABLE_DIFF='0',
+    )
+    env_vars_str = " ".join(
+        f"{env_var}={value}"
+        for env_var, value in env_vars.items()
+    )
+    last_cinn_stage_exit_code = os.system(
+        f"{env_vars_str} {sys.executable} {__file__} > /dev/null 2>&1"
+    )
+    return last_cinn_stage_exit_code != 0
+
+def SetDefaultEnv(**env_var2value):
+    for env_var, value in env_var2value.items():
+        if os.getenv(env_var) is None:
+            os.environ[env_var] = str(value)
+
+SetDefaultEnv(
+    PADDLE_DEBUG_ENABLE_CINN=True,
+    FLAGS_enable_pir_api=True,
+    FLAGS_prim_all=True,
+    FLAGS_prim_enable_dynamic=True,
+    FLAGS_use_cinn=False,
+    FLAGS_check_infer_symbolic=False,
+    FLAGS_enable_fusion_fallback=False,
+)
+
 import paddle
+
+def SetEnvVar(env_var2value):
+    for env_var, value in env_var2value.items():
+        os.environ[env_var] = str(value)
+    paddle.set_flags({
+        env_var:value
+        for env_var, value in env_var2value.items()
+        if env_var.startswith('FLAGS_')
+    })
+
+if GetCurrentCinnStage() is not None:
+    SetEnvVar(GetCurrentCinnStage().env_vars)
 
 def GetEnvVarEnableJit():
     enable_jit = os.getenv('PADDLE_DEBUG_ENABLE_JIT')
@@ -171,30 +299,30 @@ class CinnTestBase:
 {%- endmacro %}
 
 {% macro get_primitive_class_methods(op) %}
-    def __init__(self):
-        super().__init__()
+        def __init__(self):
+            super().__init__()
 
-    def forward(self, {{ op.input_tensor_names | join(", ") }}):
-        {%- for example_tensor_meta in op.example_inputs_meta %}
-        {%- set input_idx = loop.index0 -%}
-        {%- set data = example_tensor_meta.data -%}
-        {%- if data != None and get_pos_arg_type_name(op, input_idx) == 'IntArray' %}
-        {{op.input_tensor_names[input_idx]}} = {{data}}
-        {%- endif -%}
-        {%- endfor %}
-        return {{ op.op_expr }}
+        def forward(self, {{ op.input_tensor_names | join(", ") }}):
+            {%- for example_tensor_meta in op.example_inputs_meta %}
+            {%- set input_idx = loop.index0 -%}
+            {%- set data = example_tensor_meta.data -%}
+            {%- if data != None and get_pos_arg_type_name(op, input_idx) == 'IntArray' %}
+            {{op.input_tensor_names[input_idx]}} = {{data}}
+            {%- endif -%}
+            {%- endfor %}
+            return {{ op.op_expr }}
 
-    def get_input_spec(self):
-        return [
-        {%- for shape, dtype in op.input_spec_shape_dtypes %}
-        {%- set input_idx = loop.index0 %}
-            paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
-        {%- endfor %}
-        ]
-        
-    instance_ = None
-    static_instance_with_cinn_ = None
-    static_instance_without_cinn_ = None
+        def get_input_spec(self):
+            return [
+            {%- for shape, dtype in op.input_spec_shape_dtypes %}
+            {%- set input_idx = loop.index0 %}
+                paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
+            {%- endfor %}
+            ]
+            
+        instance_ = None
+        static_instance_with_cinn_ = None
+        static_instance_without_cinn_ = None
 
 {% endmacro %}
 
@@ -203,31 +331,33 @@ PrimitiveOp_{{get_sha_hash_prefix(get_primitive_class_methods(op))}}
 {%- endmacro -%}
 
 {% macro get_test_class_methods(op) %}
-    def get_test_class(self):
-        return {{get_primitive_class_name(op)}}
-    def get_inputs(self):
-        return [
-        {%- for example_tensor_meta in op.example_inputs_meta %}
-            {{get_input_tensor_instance(example_tensor_meta)}},
-        {%- endfor %}
-        ]
+        def get_test_class(self):
+            return {{get_primitive_class_name(op)}}
+        def get_inputs(self):
+            return [
+            {%- for example_tensor_meta in op.example_inputs_meta %}
+                {{get_input_tensor_instance(example_tensor_meta)}},
+            {%- endfor %}
+            ]
 {% endmacro %}
 
 {%- macro get_test_class_name(op) -%}
 TestPrimitiveOp_{{get_sha_hash_prefix(get_test_class_methods(op))}}
 {%- endmacro -%}
 
-{%- for op in ops %}
-{%- if not is_cached_before(get_primitive_class_name(op)) -%}
-class {{get_primitive_class_name(op)}}(InstanceTrait, paddle.nn.Layer):
-    {{get_primitive_class_methods(op)}}
-{{cache(get_primitive_class_name(op))}}
-{%- endif -%}
+if not (IsCinnStageEnableDiff() and LastCINNStageFailed()):
 
-class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
-    {{get_test_class_methods(op)}}
+    {%- for op in ops %}
+    {%- if not is_cached_before(get_primitive_class_name(op)) %}
+    class {{get_primitive_class_name(op)}}(InstanceTrait, paddle.nn.Layer):
+        {{get_primitive_class_methods(op)}}
+    {{cache(get_primitive_class_name(op))}}
+    {%- endif -%}
 
-{% endfor %}
+    class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
+        {{get_test_class_methods(op)}}
+
+    {% endfor %}
 
 if __name__ == '__main__':
     unittest.main()
