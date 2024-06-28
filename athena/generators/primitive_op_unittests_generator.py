@@ -32,7 +32,9 @@ class PrimitiveOpStmt:
 class PrimitiveOpUnittestsGenerator:
 
   def __init__(self, input_spec_mode, op_example_inputs_meta_getter):
-    self.input_spec_mode = input_spec_mode
+    self.input_spec_modes = [input_spec_mode] if input_spec_mode != "all" else [
+      "original", "pure_static", "pure_dynamic"
+    ]
     self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
     self.paddle_op_call_generator = PaddleOpCallGenerator()
 
@@ -42,9 +44,14 @@ class PrimitiveOpUnittestsGenerator:
         op=op,
         op_expr=self.GetOpExpr(programd_id, op),
         input_tensor_names=self.GetInputTensorNames(programd_id, op),
-        input_spec_shape_dtypes=self.GetInputSpecShapeAndDtype(programd_id, op),
+        input_spec_shape_dtypes=self.GetInputSpecShapeAndDtype(
+          input_spec_mode=input_spec_mode,
+          programd_id=programd_id,
+          op=op,
+        ),
         example_inputs_meta=self.GetExampleInputsMeta(programd_id, op)
       )
+      for input_spec_mode in self.input_spec_modes
       for programd_id, op in uid_and_ops
       if self.op_example_inputs_meta_getter.HasAllInputs(
         programd_id, op.op_id, num_inputs=len(op.input_types)
@@ -68,14 +75,14 @@ class PrimitiveOpUnittestsGenerator:
   def GetInputTensorNames(self, programd_id, op):
     return [t.name for t in self.GetInputTensors(op)]
   
-  def GetInputSpecShapeAndDtype(self, programd_id, op):
-    if self.input_spec_mode == "default":
+  def GetInputSpecShapeAndDtype(self, input_spec_mode, programd_id, op):
+    if input_spec_mode == "original":
       def GetInputSpecShape(input_idx, tensor):
         return [(dim if dim >= 0 else None) for dim in tensor.shape]
-    elif self.input_spec_mode == "pure_dynamic":
+    elif input_spec_mode == "pure_dynamic":
       def GetInputSpecShape(input_idx, tensor):
         return [None for _ in tensor.shape]
-    elif self.input_spec_mode == "pure_static":
+    elif input_spec_mode == "pure_static":
       def GetInputSpecShape(input_idx, tensor):
         return self.GetExampleTensorMeta(programd_id, op, input_idx).shape
     else:

@@ -15,7 +15,7 @@ The file named `fusion_op_programs.py` in the logging directory collects all pir
 ### module op unittests
 
 ```bash
-python3 -m athena.module_op_unittests --input_dir=/path/to/input/directory --output_dir=/path/to/output/directory
+python3 -m athena.module_op_unittests --ir_programs=/path/to/original_programs.py --example_inputs=/path/to/programs_example_input_tensor_meta.py --output_dir=/path/to/output/directory
 ```
 Please put `original_programs.py` and `programs_example_input_tensor_meta.py` into `input_dir`
 

@@ -38,7 +38,7 @@ class ModuleOpUnittestGenerator:
 
   def Generate(self):
 
-    def GetShapeInstance(tensor):
+    def GetInstanceShape(tensor):
       if tensor.arg_name_as_input is not None:
         tensor_meta = self.example_inputs_meta_getter.Get(
           program_id=self.program_id,
@@ -52,11 +52,20 @@ class ModuleOpUnittestGenerator:
           for dim in tensor.shape
         ]
 
+    def GetInstanceData(tensor):
+      if tensor.arg_name_as_input is None:
+        return None
+      tensor_meta = self.example_inputs_meta_getter.Get(
+        program_id=self.program_id,
+        input_tensor=tensor,
+      )
+      return tensor_meta.data
+
     def GetInputTensorDesc(input_tensor):
       return MakeInputTensorDesc(
         input_tensor,
-        GetShapeInstance,
-        lambda t: None,
+        GetInstanceShape,
+        GetInstanceData,
       )
         
     def MakeBlockDescriptor(block):

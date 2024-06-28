@@ -10,7 +10,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("ir_programs", "", "ir programs file.")
 flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
 flags.DEFINE_string("output_dir", "", "output directory.")
-flags.DEFINE_enum("input_spec_mode", "default", ["default", "pure_static", "pure_dynamic"], "generate dynamic shape unittests if input_spec_mode is pure_dynamic")
+flags.DEFINE_enum("input_spec_mode", "all", ["all", "original", "pure_static", "pure_dynamic"], "generate dynamic shape unittests if input_spec_mode is pure_dynamic")
 flags.DEFINE_string("tmp_dir", "", "temp directory.")
 
 
@@ -35,7 +35,7 @@ def Main(tmp_dir):
   file_prefix = "tmp_op_example_input_"
   for file in glob.glob(f"{tmp_dir}/{file_prefix}*.py"):
     os.remove(file)
-  for file in glob.glob(f"{FLAGS.output_dir}/test_*.py"):
+  for file in glob.glob(f"{FLAGS.output_dir}/test_{FLAGS.input_spec_mode}_*.py"):
     os.remove(file)
   System(f"{sys.executable} -m athena.op_example_input_meta_script --output_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir}")
   System(f"{sys.executable} -m athena.op_example_input_meta_result --input_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir}")

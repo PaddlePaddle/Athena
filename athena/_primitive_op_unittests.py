@@ -24,7 +24,7 @@ from itertools import groupby
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
-flags.DEFINE_enum("input_spec_mode", "default", ["default", "pure_static", "pure_dynamic"], "generate dynamic shape unittests if input_spec_mode is pure_dynamic")
+flags.DEFINE_enum("input_spec_mode", "all", ["all", "original", "pure_static", "pure_dynamic"], "generate dynamic shape unittests if input_spec_mode is pure_dynamic")
 flags.DEFINE_string("input_dir", "./input-dir", "input directory.")
 
 def main(argv):
@@ -32,7 +32,7 @@ def main(argv):
   op_example_inputs_file = f"{FLAGS.input_dir}/op_example_input_meta_result.py"
   unittests = GetOutputUnittests(original_programs_file, op_example_inputs_file)
   for name, unittest in unittests:
-    filepath = f"{FLAGS.output_dir}/test_{name}.py"
+    filepath = f"{FLAGS.output_dir}/test_{FLAGS.input_spec_mode}_{name}.py"
     WriteToFile(filepath, unittest)
     PrintToTerminal(name, filepath, unittest)
 

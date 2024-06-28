@@ -10,24 +10,8 @@ import unittest
 import numpy as np
 import paddle
 
-def NumCurrentUnittestBlocks():
-    return {{blocks | length}} # number-of-blocks
-
 def NumOperationsInBlock(block_idx):
     return [{{blocks | map(attribute='stmts') | map('length') | join(", ") }}][block_idx] - 1 # number-of-ops-in-block
-
-def GetPaddleDebugNumAllowedBlocks():
-    try:
-        return int(os.getenv('PADDLE_DEBUG_NUM_ALLOWED_BLOCKS'))
-    except:
-        return None
-
-paddle_debug_num_allowed_blocks = GetPaddleDebugNumAllowedBlocks()
-
-def ShouldTestBlock(block_idx, is_entry_block):
-    if paddle_debug_num_allowed_blocks is not int:
-        return is_entry_block
-    return block_idx < paddle_debug_num_allowed_blocks
 
 def GetPaddleDebugNumAllowedOps():
     try:
@@ -42,19 +26,8 @@ if type(paddle_debug_num_allowed_ops) is not int:
     def EarlyReturn(block_idx, op_idx):
         return False      
 else:
-    type_paddle_debug_num_allowed_blocks_is_int = (
-        type(paddle_debug_num_allowed_blocks) is int
-    )
     def EarlyReturn(block_idx, op_idx):
-        if type_paddle_debug_num_allowed_blocks_is_int:
-            if block_idx + 1 != paddle_debug_num_allowed_blocks:
-                return False
         return op_idx >= paddle_debug_num_allowed_ops
-
-
-{% macro block_input_shape_global_var_name(block, input_idx) -%}
-{{block.block_name}}_in{{input_idx}}_shape
-{%- endmacro %}
 
 class BlockEntries:
 {%- for block in blocks %}
@@ -81,92 +54,27 @@ class BlockEntries:
         return {{block.output_arg_names | join(", ")}}
 {%- endfor %}
 
-
-{% for block in blocks %}
-{%- set block_idx = loop.index0 %}
-{%- for shape, _ in block.input_spec_shape_dtypes %}
-{%- set input_idx = loop.index0 %}
-{%- if not block.is_entry_block %}
-# {{shape}}
-{{block_input_shape_global_var_name(block, input_idx)}} = None
-{%- endif %}
-{%- endfor %}
-{%- endfor %}
-
-class BlockShapesExtractor:
-{%- for block in blocks %}
-{%- set block_idx = loop.index0 %}
-
-    def {{block.block_name}}(self, {{block.input_arg_names | join(", ")}}):
-    {%- for arg_name in block.input_arg_names %}
-    {%- set input_idx = loop.index0 %}
-        global {{block_input_shape_global_var_name(block, input_idx)}}
-        {{block_input_shape_global_var_name(block, input_idx)}} = {{arg_name}}.shape
-    {%- endfor %}
-        
-    {%- for stmt in block.stmts %}
-    {%- set op_idx = loop.index0 %}
-        {%- if (stmt.pycode | length) > 0%}
-        
-        # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
-        {%- endif %}
-        {%- for pycode in stmt.pycode %}
-        {%- if pycode.num_tabs == 0 %}
-        {{pycode.pycode}}
-        {%- elif pycode.num_tabs == 1 %}
-            {{pycode.pycode}}
-        {%- elif pycode.num_tabs == 2 %}
-                {{pycode.pycode}}
-        {%- else %}
-        raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
-        {%- endif %}
-        {%- endfor %}
-    {%- endfor %}
-        return {{block.output_arg_names | join(", ")}}
-{%- endfor %}
-
-{% macro get_input_shape_instance(block, block_idx, input_idx) -%}
-    {%- if block.is_entry_block -%}
-        {{block.input_tensor_descs[input_idx].shape}}
-    {%- else -%}
-        {{block_input_shape_global_var_name(block, input_idx)}}
-    {%- endif -%}
-{%- endmacro %}
-
-
 {% macro get_input_tensor_instance(block, block_idx, input_idx) -%}
-{%- set shape = get_input_shape_instance(block, block_idx, input_idx) -%}
+{%- set shape = block.input_tensor_descs[input_idx].shape -%}
 {%- set dtype = block.input_tensor_descs[input_idx].dtype -%}
 {%- set big_dtype = block.input_tensor_descs[input_idx].big_dtype -%}
 {%- set data = block.input_tensor_descs[input_idx].data -%}
 {%- set min = block.input_tensor_descs[input_idx].min -%}
 {%- set max = block.input_tensor_descs[input_idx].max -%}
 {%- if data != None -%}
+    {%- if data == [] and shape == [] -%}
+    paddle.to_tensor({{data}}, dtype='{{dtype}}')
+    {%- else -%}
     paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
+    {%- endif -%}
 {%- elif big_dtype == "bool" -%}
-    paddle.zeros({{shape}}, dtype='{{dtype}}')
+    paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
 {%- elif big_dtype == "int64" -%}
     paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='{{dtype}}')
 {%- elif big_dtype == "float64" -%}
     paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
-{%- endif %}
+{%- endif -%}
 {%- endmacro %}
-
-def InferBlockInputShapes():
-    extractor = BlockShapesExtractor()
-    for _ in range(10):
-    {%- for block in blocks %}
-    {%- if block.is_entry_block %}
-    {%- set block_idx = loop.index0 %}
-        extractor.{{block.block_name}}(
-        {%- for arg_name in block.input_arg_names %}
-        {%- set input_idx = loop.index0 %}
-            {{arg_name}}={{get_input_tensor_instance(block, block_idx, input_idx)}},
-        {%- endfor %}
-        )
-    {%- endif %}
-    {%- endfor %}
-
 
 def GetEnvVarEnableJit():
     enable_jit = os.getenv('PADDLE_DEBUG_ENABLE_JIT')
@@ -241,53 +149,53 @@ class TestBase:
 
 {%- for block in blocks %}
 {%- set block_idx = loop.index0 %}
+{%- if block.is_entry_block %}
 
-if ShouldTestBlock({{block_idx}}, is_entry_block={{block.is_entry_block}}):
+class Block_{{block.block_name}}(paddle.nn.Layer, BlockEntries):
+    def __init__(self):
+        super().__init__()
 
-    class Block_{{block.block_name}}(paddle.nn.Layer, BlockEntries):
-        def __init__(self):
-            super().__init__()
+    def forward(self, {{ block.input_arg_names | join(", ") }}):
+        args = [{{block.stmts[0].op_func_in_out_names_signature.in_names | join(", ")}}]
+        for op_idx, op_func in enumerate(self.get_op_funcs()):
+            if EarlyReturn({{block_idx}}, op_idx):
+                return args
+            args = op_func(*args)
+        return args
 
-        def forward(self, {{ block.input_arg_names | join(", ") }}):
-            args = [{{block.stmts[0].op_func_in_out_names_signature.in_names | join(", ")}}]
-            for op_idx, op_func in enumerate(self.get_op_funcs()):
-                if EarlyReturn({{block_idx}}, op_idx):
-                    return args
-                args = op_func(*args)
-            return args
-
-        def get_op_funcs(self):
-            return [
-            {%- for stmt in block.stmts %}
-                self.{{stmt.op_unique_local_name}},
-            {%- endfor %}
-            ]
-
+    def get_op_funcs(self):
+        return [
         {%- for stmt in block.stmts %}
-        {%- set op_idx = loop.index0 %}
+            self.{{stmt.op_unique_local_name}},
+        {%- endfor %}
+        ]
 
-        def {{stmt.op_unique_local_name}}(self, {{stmt.op_func_in_out_names_signature.in_names | join(", ")}}):
-        
-            # EarlyReturn({{block_idx}}, {{op_idx}})
+    {%- for stmt in block.stmts %}
+    {%- set op_idx = loop.index0 %}
 
-            # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+    def {{stmt.op_unique_local_name}}(self, {{stmt.op_func_in_out_names_signature.in_names | join(", ")}}):
+    
+        # EarlyReturn({{block_idx}}, {{op_idx}})
 
-            {%- for pycode in stmt.pycode %}
-            {%- if pycode.num_tabs == 0 %}
+        # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+
+        {%- for pycode in stmt.pycode %}
+        {%- if pycode.num_tabs == 0 %}
+        {{pycode.pycode}}
+        {%- elif pycode.num_tabs == 1 %}
             {{pycode.pycode}}
-            {%- elif pycode.num_tabs == 1 %}
+        {%- elif pycode.num_tabs == 2 %}
                 {{pycode.pycode}}
-            {%- elif pycode.num_tabs == 2 %}
-                    {{pycode.pycode}}
-            {%- else %}
-            raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
-            {%- endif %}
-            {%- endfor %}
-
-            return [{{stmt.op_func_in_out_names_signature.out_names | join(", ")}}]
-        
+        {%- else %}
+        raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
+        {%- endif %}
         {%- endfor %}
 
+        return [{{stmt.op_func_in_out_names_signature.out_names | join(", ")}}]
+    
+    {%- endfor %}
+
+if {{block.is_entry_block}}:
 
     class Test_{{block.block_name}}(TestBase, unittest.TestCase):
         def prepare_data(self):
@@ -322,11 +230,11 @@ if ShouldTestBlock({{block_idx}}, is_entry_block={{block.is_entry_block}}):
             net = Block_{{block.block_name}}()
             if GetEnvVarEnableJit():
                 net = self.apply_to_static(net, use_cinn)
+            paddle.seed(2024)
             out = net(*self.inputs)
             return out
-
+{%- endif %}
 {%- endfor %}
 
 if __name__ == '__main__':
-    InferBlockInputShapes()
     unittest.main()

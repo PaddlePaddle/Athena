@@ -11,18 +11,23 @@ import sys
 from absl import app
 from absl import flags
 import hashlib
+import glob as glob
+import os
 
 FLAGS = flags.FLAGS
 
+flags.DEFINE_string("ir_programs", "", "ir programs file.")
+flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
-flags.DEFINE_string("input_dir", "./input-dir", "input directory.")
 
 def main(argv):
-  original_programs_file = f"{FLAGS.input_dir}/original_programs.py"
-  example_inputs_file = f"{FLAGS.input_dir}/programs_example_input_tensor_meta.py"
+  original_programs_file = FLAGS.ir_programs
+  example_inputs_file = FLAGS.example_inputs
+  for file in glob.glob(f"{FLAGS.output_dir}/test_module_op_*.py"):
+    os.remove(file)
   for name, unittest in GetOutputUnittests(original_programs_file, example_inputs_file):
     sha256sum = GetSha256sum(unittest)
-    filepath = f"{FLAGS.output_dir}/test_{sha256sum[0:32]}.py"
+    filepath = f"{FLAGS.output_dir}/test_module_op_{sha256sum[0:32]}.py"
     WriteToFile(filepath, unittest)
     PrintToTerminal(name, filepath, unittest)
 

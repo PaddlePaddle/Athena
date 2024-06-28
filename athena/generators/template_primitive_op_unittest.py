@@ -1,4 +1,8 @@
 import os
+os.environ['FLAGS_cinn_new_group_scheduler'] = '1'
+os.environ['FLAGS_group_schedule_tiling_first'] = '1'
+os.environ['FLAGS_enable_pir_api'] = '1'
+os.environ['FLAGS_cinn_bucket_compile'] = '1'
 import sys
 import unittest
 import numpy as np
@@ -38,7 +42,7 @@ cinn_stages = [
         ),
     ),
 	Stage(
-        name="cinn_frontend_pass",
+        name="frontend",
         env_vars=dict(
             PADDLE_DEBUG_ENABLE_CINN=True,
             FLAGS_prim_all=True,
@@ -49,7 +53,7 @@ cinn_stages = [
         ), 
     ),
     Stage(
-        name="cinn_backend",
+        name="backend",
         env_vars=dict(
             PADDLE_DEBUG_ENABLE_CINN=True,
             FLAGS_prim_all=True,
@@ -246,6 +250,7 @@ class CinnTestBase:
             net = self.prepare_static_net(use_cinn)
         else:
             net = self.prepare_net()
+        paddle.seed(2024)
         out = net(*self.inputs)
         return out
     
