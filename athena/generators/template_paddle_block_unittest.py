@@ -1,14 +1,152 @@
 import os
 os.environ['FLAGS_cinn_new_group_scheduler'] = '1'
 os.environ['FLAGS_group_schedule_tiling_first'] = '1'
-os.environ['FLAGS_prim_all'] = 'true'
-os.environ['FLAGS_prim_enable_dynamic'] = '1'
 os.environ['FLAGS_enable_pir_api'] = '1'
 os.environ['FLAGS_cinn_bucket_compile'] = '1'
-
+import sys
 import unittest
 import numpy as np
+from dataclasses import dataclass
+import typing as t
+
+@dataclass
+class Stage:
+    name: str
+    env_vars: t.Dict[str, str]
+
+cinn_stages = [
+    Stage(
+        name="dynamic_to_static",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=False,
+            FLAGS_prim_all=False,
+            FLAGS_prim_enable_dynamic=False,
+        ),
+    ),
+    Stage(
+        name="prim",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=False,
+            FLAGS_prim_all=True,
+            FLAGS_prim_enable_dynamic=True,
+        ),
+    ),
+    Stage(
+        name="infer_symbolic",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=True,
+            FLAGS_prim_all=True,
+            FLAGS_prim_enable_dynamic=True,
+            FLAGS_use_cinn=False,
+            FLAGS_check_infer_symbolic=True,
+        ),
+    ),
+	Stage(
+        name="frontend",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=True,
+            FLAGS_prim_all=True,
+            FLAGS_prim_enable_dynamic=True,
+            FLAGS_use_cinn=True,
+            FLAGS_check_infer_symbolic=False,
+            FLAGS_enable_fusion_fallback=True,
+        ), 
+    ),
+    Stage(
+        name="backend",
+        env_vars=dict(
+            PADDLE_DEBUG_ENABLE_CINN=True,
+            FLAGS_prim_all=True,
+            FLAGS_prim_enable_dynamic=True,
+            FLAGS_use_cinn=True,
+            FLAGS_check_infer_symbolic=False,
+            FLAGS_enable_fusion_fallback=False,
+        ), 
+    ),
+]
+
+def GetCinnStageByName(name):
+    for stage in cinn_stages:
+        if stage.name == name:
+            return stage
+    return None
+
+def GetCurrentCinnStage():
+    name = os.getenv('PADDLE_DEBUG_CINN_STAGE_NAME')
+    if name is None:
+        return None
+    stage_names = [stage.name for stage in cinn_stages]
+    assert name in stage_names, (
+        f"PADDLE_DEBUG_CINN_STAGE_NAME should be in {stage_names}"
+    )
+    return GetCinnStageByName(name)
+
+def GetPrevCinnStage(stage):
+    for i in range(1, len(cinn_stages)):
+        if stage is cinn_stages[i]:
+            return cinn_stages[i - 1]
+    return None
+
+def IsCinnStageEnableDiff():
+    value = os.getenv('PADDLE_DEBUG_CINN_STAGE_ENABLE_DIFF')
+    enabled = value in {
+        '1',
+        'true',
+        'True',
+    }
+    if enabled:
+        assert GetCurrentCinnStage() is not None
+    return enabled
+
+last_cinn_stage_exit_code = None
+def LastCINNStageFailed():
+    global last_cinn_stage_exit_code
+    if last_cinn_stage_exit_code is not None:
+        return last_cinn_stage_exit_code != 0
+    last_stage = GetPrevCinnStage(GetCurrentCinnStage())
+    if last_stage is None:
+        return False
+    env_vars = dict(
+        PADDLE_DEBUG_CINN_STAGE_NAME=last_stage.name,
+        PADDLE_DEBUG_CINN_STAGE_ENABLE_DIFF='0',
+    )
+    env_vars_str = " ".join(
+        f"{env_var}={value}"
+        for env_var, value in env_vars.items()
+    )
+    last_cinn_stage_exit_code = os.system(
+        f"{env_vars_str} {sys.executable} {__file__} > /dev/null 2>&1"
+    )
+    return last_cinn_stage_exit_code != 0
+
+def SetDefaultEnv(**env_var2value):
+    for env_var, value in env_var2value.items():
+        if os.getenv(env_var) is None:
+            os.environ[env_var] = str(value)
+
+SetDefaultEnv(
+    PADDLE_DEBUG_ENABLE_CINN=True,
+    FLAGS_enable_pir_api=True,
+    FLAGS_prim_all=True,
+    FLAGS_prim_enable_dynamic=True,
+    FLAGS_use_cinn=False,
+    FLAGS_check_infer_symbolic=False,
+    FLAGS_enable_fusion_fallback=False,
+)
+
 import paddle
+
+def SetEnvVar(env_var2value):
+    for env_var, value in env_var2value.items():
+        os.environ[env_var] = str(value)
+    paddle.set_flags({
+        env_var:value
+        for env_var, value in env_var2value.items()
+        if env_var.startswith('FLAGS_')
+    })
+
+if GetCurrentCinnStage() is not None:
+    SetEnvVar(GetCurrentCinnStage().env_vars)
 
 def NumOperationsInBlock(block_idx):
     return [{{blocks | map(attribute='stmts') | map('length') | join(", ") }}][block_idx] - 1 # number-of-ops-in-block
@@ -118,7 +256,7 @@ def IsInteger(dtype):
     return np.dtype(dtype).char in np.typecodes['AllInteger']
 
 
-class TestBase:
+class CinnTestBase:
     def setUp(self):
         paddle.seed(2024)
         self.prepare_data()
@@ -195,9 +333,9 @@ class Block_{{block.block_name}}(paddle.nn.Layer, BlockEntries):
     
     {%- endfor %}
 
-if {{block.is_entry_block}}:
+if {{block.is_entry_block}} and not (IsCinnStageEnableDiff() and LastCINNStageFailed()):
 
-    class Test_{{block.block_name}}(TestBase, unittest.TestCase):
+    class Test_{{block.block_name}}(CinnTestBase, unittest.TestCase):
         def prepare_data(self):
             self.inputs = [
             {%- for arg_name in block.input_arg_names %}
