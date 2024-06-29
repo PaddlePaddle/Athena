@@ -73,6 +73,7 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
     (name, list(ops))
     for name, ops in groupby(sorted(ops, key=GetPyVarName), key=GetPyVarName)
   ]
+  valid_operand_types = (ir_type.DenseTensorType, ir_type.NullType, ir_type.VectorType)
   for name, uid_and_ops in grouped_ops:
     generator = PrimitiveOpUnittestsGenerator(
       input_spec_mode=FLAGS.input_spec_mode,
@@ -85,11 +86,11 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
         program_id, op.op_id, num_inputs=len(op.input_types)
       )
       if all(
-        type(input_type) is ir_type.DenseTensorType
+        isinstance(input_type, valid_operand_types)
         for input_type in op.input_types
       )
       if all(
-        type(output_type) is ir_type.DenseTensorType
+        isinstance(output_type, valid_operand_types)
         for output_type in op.output_types
       )
     ]

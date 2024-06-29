@@ -1,4 +1,5 @@
 import athena.ir.ir_attr as ir_attr
+import athena.ir.ir_type as ir_type
 from athena.generators.paddle_c_ops_arg_names import GetCOpsArgNames
 import sys
 
@@ -116,6 +117,8 @@ class PaddleOpCallGenerator:
   def _GenerateOpCall(self, op, *inputs):
     c_ops_arg_names = GetCOpsArgNames(self.PaddleMethodName(op))
     def ValidCOpsCall():
+      if op.GetValidPyVarNameComponents()[0] != "pd_op":
+        return False
       if c_ops_arg_names is None:
         return False
       attr_names = [
@@ -127,6 +130,7 @@ class PaddleOpCallGenerator:
       return True
     if ValidCOpsCall():
       return self.GenerateCOpsCall(op, inputs, c_ops_arg_names)
+    assert op.GetValidPyVarNameComponents()[0] == "pd_op", f"op.name: {op.name}"
     return self.GenerateDefaultOpCall(self.m, op, *inputs)
 
   def PaddleMethodName(self, op):
@@ -160,7 +164,11 @@ class PaddleOpCallGenerator:
       nonlocal pos_arg_idx
       pos_arg_idx += 1
       t = inputs[pos_arg_idx]
-      return t.name if t is not None else "None"
+      if t is None:
+        return "None"
+      if isinstance(t.type, ir_type.NullType):
+        return "None"
+      return t.name
     m = f"{self.m}._C_ops"
     args = [
       op.attrs[arg_name] if arg_name in op.attrs else GetPosArgVarName()
@@ -234,6 +242,9 @@ class PaddleOpCallGenerator:
   def builtin_combine(self, op, *inputs):
     operands = ", ".join([input.name for input in inputs])
     return f"[{operands}]"
+
+  def builtin_split(self, op, x):
+    return x.name
 
   def pd_op_matmul(self, op, x, y):
     return f"{self.m}.matmul({x.name}, {y.name}, transpose_x={op.attrs['transpose_x']}, transpose_y={op.attrs['transpose_y']})"

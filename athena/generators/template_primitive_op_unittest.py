@@ -303,24 +303,45 @@ class CinnTestBase:
 {%- endif -%}
 {%- endmacro %}
 
+{% macro get_operand_value(op, operand_id) -%}
+{%- set data = op.example_input_data4operand_id(operand_id) -%}
+{%- set immediate_value = op.immediate_value4operand_id(operand_id, data) -%}
+{%- set null_tensor_id = op.null_tensor_id4operand_id(operand_id) -%}
+{%- set operand_tensor_id = op.operand_tensor_id4operand_id(operand_id) -%}
+{%- set tensor_list_member_ids = op.tensor_list_member_ids4operand_id(operand_id) -%}
+{%- if data != None and immediate_value != None -%}
+    {{immediate_value}}
+{%- elif null_tensor_id != None -%}
+    None
+{%- elif operand_tensor_id != None -%}
+    {{op.tensor_name4tensor_id(operand_tensor_id)}}
+{%- elif tensor_list_member_ids != None -%}
+    [{%- for member_tensor_id in tensor_list_member_ids -%}
+    {%- if loop.index0 > 0 -%}{{", "}}{%- endif -%}
+    {{op.tensor_name4tensor_id(member_tensor_id)}}
+    {%- endfor -%}]
+{%- endif -%}
+{%- endmacro %}
+
 {% macro get_primitive_class_methods(op) %}
         def __init__(self):
             super().__init__()
 
-        def forward(self, {{ op.input_tensor_names | join(", ") }}):
-            {%- for example_tensor_meta in op.example_inputs_meta %}
-            {%- set input_idx = loop.index0 -%}
-            {%- set data = example_tensor_meta.data -%}
-            {%- if data != None and get_pos_arg_type_name(op, input_idx) == 'IntArray' %}
-            {{op.input_tensor_names[input_idx]}} = {{data}}
-            {%- endif -%}
+        def forward(self{{", "}}
+            {%- for tensor_id in op.tensor_ids -%}
+            {%- if loop.index0 > 0 -%}{{", "}}{%- endif -%}
+            {{op.tensor_name4tensor_id(tensor_id)}}
+            {%- endfor -%}
+        ):
+            {%- for operand_id in op.operand_ids %}
+            {{op.tensor_name4operand_id(operand_id)}} = {{get_operand_value(op, operand_id)}}
             {%- endfor %}
             return {{ op.op_expr }}
 
         def get_input_spec(self):
             return [
-            {%- for shape, dtype in op.input_spec_shape_dtypes %}
-            {%- set input_idx = loop.index0 %}
+            {%- for tensor_id in op.tensor_ids %}
+            {%- set shape, dtype = op.input_spec_shape_dtype4tensor_id(tensor_id) %}
                 paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
             {%- endfor %}
             ]
@@ -340,7 +361,8 @@ PrimitiveOp_{{get_sha_hash_prefix(get_primitive_class_methods(op))}}
             return {{get_primitive_class_name(op)}}
         def get_inputs(self):
             return [
-            {%- for example_tensor_meta in op.example_inputs_meta %}
+            {%- for tensor_id in op.tensor_ids %}
+            {%- set example_tensor_meta = op.example_input_meta4tensor_id(tensor_id) %}
                 {{get_input_tensor_instance(example_tensor_meta)}},
             {%- endfor %}
             ]

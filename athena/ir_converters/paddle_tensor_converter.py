@@ -39,3 +39,14 @@ class PaddleTensorConverter:
       ),
       dim_exprs=tensor.dim_exprs
     )
+
+  @classmethod
+  def NullType(cls, tensor):
+    return ir_tensor.Tensor(
+      local_name_prefix=tensor.local_name_prefix,
+      name=tensor.name,
+      arg_name_as_input=tensor.arg_name_as_input,
+      defining_op_name=tensor.defining_op_name,
+      type=tensor.type,
+      dim_exprs=tensor.dim_exprs,
+    )

@@ -63,9 +63,9 @@ class ModuleOpUnittestGenerator:
 
     def GetInputTensorDesc(input_tensor):
       return MakeInputTensorDesc(
-        input_tensor,
-        GetInstanceShape,
-        GetInstanceData,
+        shape=GetInstanceShape(input_tensor),
+        dtype=input_tensor.dtype,
+        data=GetInstanceData(input_tensor),
       )
         
     def MakeBlockDescriptor(block):

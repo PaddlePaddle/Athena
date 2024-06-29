@@ -69,9 +69,9 @@ def RenderTemplate(
     ]
   input_tensor_descs = [
     MakeInputTensorDesc(
-      input_tensor,
-      GetShapeInstanceFromDimExprs,
-      GetDataInstanceFromDimExprs
+      shape=GetShapeInstanceFromDimExprs(input_tensor),
+      dtype=input_tensor.dtype,
+      data=GetDataInstanceFromDimExprs(input_tensor),
     )
     for input_tensor in input_tensors
   ]

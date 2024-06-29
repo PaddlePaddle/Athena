@@ -67,9 +67,9 @@ class ProgramBlocksDescriptorGenerator:
 
     def GetInputTensorDesc(input_tensor):
       return MakeInputTensorDesc(
-        input_tensor,
-        GetShapeInstance,
-        GetDataInstance,
+        shape=GetShapeInstance(input_tensor),
+        dtype=input_tensor.dtype,
+        data=GetDataInstance(input_tensor),
       )
         
     def MakeBlockDescriptor(block):

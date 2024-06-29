@@ -1,4 +1,5 @@
 from collections import namedtuple
+import athena.ir.ir_type as ir_type
 
 InputTensorDesc = namedtuple("InputTensorDesc", [
   "shape",
@@ -9,18 +10,18 @@ InputTensorDesc = namedtuple("InputTensorDesc", [
   "max",
 ])
 
-def MakeInputTensorDesc(input_tensor, GetShapeInstance, GetDataInstance):
+def MakeInputTensorDesc(shape, dtype, data):
   return InputTensorDesc(
-    shape=GetShapeInstance(input_tensor),
-    dtype=input_tensor.dtype,
-    big_dtype=_GetBigType(input_tensor),
-    data=GetDataInstance(input_tensor),
-    min=getattr(InitMinGetter, input_tensor.dtype)(),
-    max=getattr(InitMaxGetter, input_tensor.dtype)(),
+    shape=shape,
+    dtype=dtype,
+    big_dtype=_GetBigType(dtype),
+    data=data,
+    min=getattr(InitMinGetter, dtype)(),
+    max=getattr(InitMaxGetter, dtype)(),
   )
 
-def _GetBigType(tensor):
-  return type2bigger_type[tensor.dtype]
+def _GetBigType(dtype):
+  return type2bigger_type[dtype]
 
 type2bigger_type = dict(
   bool="bool",

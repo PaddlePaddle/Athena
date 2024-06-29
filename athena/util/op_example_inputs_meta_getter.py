@@ -9,7 +9,7 @@ ShapeType = t.List[int]
 class OpInputMeta:
   op_id: int
   input_idx: int
-  shape: t.Union[ShapeType, t.List[ShapeType]]
+  shape: t.Union[ShapeType, t.List[ShapeType], None]
   data: t.Union[ShapeType, t.List[ShapeType], None]
 
 class OpExampleInputsMetaGetter:
@@ -30,8 +30,6 @@ class OpExampleInputsMetaGetter:
   def _MakeOpInputMetaKey2Value(self, records):
     input_meta_key2value = {}
     for record in records:
-      if record.shape is None:
-        continue
       key = OpInputMetaKey(
         record.program_id,
         record.op_id,
