@@ -91,7 +91,9 @@ class PrimitiveOpUnittestsGenerator:
 
   def __init__(self, input_spec_mode, op_example_inputs_meta_getter):
     self.input_spec_modes = [input_spec_mode] if input_spec_mode != "all" else [
-      "original", "pure_static", "pure_dynamic"
+      "original",
+      # "pure_static",
+      "pure_dynamic",
     ]
     self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
     self.graph_input_tensor_name_prefix = "arg"

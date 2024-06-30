@@ -2,7 +2,7 @@ import athena.ir.ir_constraint as ir_constraint
 import typing as t
 from collections import OrderedDict
 
-class ConstraintAttr:
+class ConstraintTrait:
 
   def add_eq_cstr(self, lhs, rhs):
     if lhs == rhs:
@@ -31,18 +31,28 @@ class ConstraintAttr:
     return self.broadcastable_cstrs_
 
   def get_gt_one_cstrs(self):
-    if not hasattr(self, 'one_cstrs_'):
-      self.one_cstrs_ = []
-    return self.one_cstrs_
+    if not hasattr(self, 'gt_one_cstrs_'):
+      self.gt_one_cstrs_ = []
+    return self.gt_one_cstrs_
 
-  def MakeConstraintManager(self):
+  def clear_all_cstrs(self):
+    del self.eq_cstrs_
+    del self.broadcastable_cstrs_
+    del self.gt_one_cstrs_
+
+  def CollectConstraints(self):
     def MakePairs(cstrs):
       return [(cstr.lhs, cstr.rhs) for cstr in cstrs]
-    return ir_constraint.ConstraintManager(
-      eq_cstrs=_MakeFindSets(MakePairs(self.get_eq_cstrs())),
-      broadcastable_cstrs=_MakeFindSets(MakePairs(self.get_broadcastable_cstrs())),
-      gt_one_cstrs=self.get_gt_one_cstrs(),
-    )
+    return [
+      ir_constraint.EqualConstraint(dim_exprs)
+      for dim_exprs in _MakeFindSets(MakePairs(self.get_eq_cstrs()))
+    ] + [
+      ir_constraint.BroadcastableConstraint(dim_exprs)
+      for dim_exprs in _MakeFindSets(MakePairs(self.get_broadcastable_cstrs()))
+    ] + [
+      ir_constraint.GtOneConstraint(dim_expr)
+      for dim_expr in self.get_gt_one_cstrs()
+    ]
 
 def _MakeFindSets(cstrs: t.List[t.Tuple[t.Any, t.Any]]) -> t.List[t.List[t.Any]]:
   node2parent = {}

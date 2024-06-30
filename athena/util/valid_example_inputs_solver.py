@@ -14,6 +14,8 @@ import operator
 import math
 import networkx as nx
 from collections import OrderedDict
+import random
+from dataclasses import dataclass
 
 SmallList = t.List
 SymbolName = str
@@ -49,11 +51,13 @@ class ValidExampleInputsSolver:
     self.constrained_dims_ndarray = np.array(
       range(1, constrained_dim_size_limit + 1),
       dtype=np.int64,
-    )
+    ).reshape((-1, 1))
     self.independent_dims_ndarray = np.array(
       range(1, independent_dim_size_limit + 1),
       dtype=np.int64,
-    )
+    ).reshape((-1, 1))
+    self.core_symbol_name_prefix_ = "T"
+    self.core_symbol_name_seq_ = 0
   
   def Solve(
   	self,
@@ -83,7 +87,9 @@ class ValidExampleInputsSolver:
     assert len(old_input_names) == len(set(old_input_names))
     assert len(ordered_input_names) == len(set(ordered_input_names))
     assert set(old_input_names) == set(ordered_input_names)
-    input_name2old_idx = {input_name:idx for idx, input_name in old_input_names}
+    input_name2old_idx = {
+      input_name:idx for idx, input_name in enumerate(old_input_names)
+    }
     old_indexes = [input_name2old_idx[input_name] for input_name in ordered_input_names]
     dims = valid_example_inputs.example_input_dims
     ordered_dims = np.concatenate(
@@ -112,6 +118,7 @@ class ValidExampleInputsSolver:
     return self.ConcatenateValidExampleInputs(valid_example_inputs_list)
 
   def ConcatenateValidExampleInputs(
+    self,
     constrained_valid_inputs_list: t.List[ValidExampleInputs],
   ):
     assert len(constrained_valid_inputs_list) > 0
@@ -134,6 +141,7 @@ class ValidExampleInputsSolver:
     )
 
   def GetCartesionProduct(
+    self,
     lhs: ValidExampleInputs,
     rhs: ValidExampleInputs,
   ) -> ValidExampleInputs:
@@ -194,8 +202,13 @@ class ValidExampleInputsSolver:
       assert num_input_names == 0
       return np.array([()], dtype=np.int64)
     for ndarray in ndarrays:
+      assert len(ndarray.shape) == 2, f"{len(ndarray.shape)} v.s. 2"
       assert ndarray.shape[0] > 0
-      assert ndarray.shape[1] == num_input_names
+    sum_num_col = reduce(lambda x, y: x + y, (
+      ndarray.shape[1]
+      for ndarray in ndarrays
+    )) 
+    assert sum_num_col == num_input_names, f"{sum_num_col} v.s. {num_input_names}"
     max_dim0_size = reduce(max, (ndarray.shape[0] for ndarray in ndarrays))
     def Extend(idx, ndarray):
       repeated = np.repeat(
@@ -204,16 +217,19 @@ class ValidExampleInputsSolver:
         axis=0
       )
       reshaped = repeated.reshape((-1, ndarray.shape[1]))
-      rolled = np.roll(reshaped, idx * (max_dim0_size / len(ndarrays)), axis=0)
+      rolled = np.roll(reshaped, int(idx * (max_dim0_size / len(ndarrays))), axis=0)
       return rolled[0:max_dim0_size, :]
-    return np.concatenate(map(Extend, enumerate(ndarrays)), axis=1)
+    return np.concatenate(
+      [Extend(idx, ndarray) for idx, ndarray in enumerate(ndarrays)],
+      axis=1
+    )
 
   def SolveConstrainedValidInputs(
     self,
     symbol_cstrs: SymbolConstraints,
   ) -> ValidExampleInputs:
     if len(symbol_cstrs.constraints) == 0:
-      assert len(symbol_cstrs.input_names) == 0
+      assert len(symbol_cstrs.input_names) == 1
       return ValidExampleInputs(
         symbol_cstrs=symbol_cstrs,
         example_input_dims=self.independent_dims_ndarray,
@@ -235,23 +251,24 @@ class ValidExampleInputsSolver:
       if symbol_name not in symbol2cstrs:
         symbol2cstrs[symbol_name] = set()
       return symbol2cstrs[symbol_name]
-    for symbol_cstr in symbol_cstrs:
-      for symbol_name in self.GetSymbolConstraintsSymbolNames(symbol_cstr):
-        GetConstraintSet(symbol_name).add(symbol_cstr)
+    for symbol_name in self.GetConstraintsSymbolNames(symbol_cstrs.constraints):
+      for constraint in symbol_cstrs.constraints:
+        GetConstraintSet(symbol_name).add(constraint)
     G = nx.Graph()
-    G.add_nodes_from(symbol_cstrs)
+    G.add_nodes_from(symbol_cstrs.constraints)
     G.add_edges_from(
       (cstrs[i], cstrs[i+1])
-      for _, _cstrs for symbol2cstrs.items()
+      for _, _cstrs in symbol2cstrs.items()
       for cstrs in [list(_cstrs)]
       for i in range(len(cstrs) - 1)
     )
     constraints_from_graph = [
       SymbolConstraints(
-        input_names=self.GetSymbolConstraintsListInputNames(symbol_cstr_group),
-        constraints=list(symbol_cstr_group),
+        input_names=self.GetConstraintsSymbolNames(constraints),
+        constraints=constraints,
       )
-      for symbol_cstr_group in nx.connected_components(G)
+      for constraint_set in nx.connected_components(G)
+      for constraints in [list(constraint_set)]
     ]
     no_constrained_input_names = set(symbol_cstrs.input_names) - set(
       input_name for cstr in constraints_from_graph for input_name in cstr.input_names
@@ -264,25 +281,15 @@ class ValidExampleInputsSolver:
       for input_name in no_constrained_input_names
     ]
 
-  def GetSymbolConstraintsListInputNames(
-    self,
-    symbol_cstr_group: t.List[SymbolConstraints]
-  ):
-    return self.Unique(
-      input_name
-      for symbol_cstr in symbol_cstr_group
-      for input_name in self.GetSymbolConstraintsSymbolNames(symbol_cstr)
-    )
-
   def Unique(self, l):
     ordered_dict: t.Dict[t.Any, bool] = OrderedDict()
     for element in l:
       ordered_dict[element] = True
     return list(ordered_dict)
 
-  def GetSymbolConstraintsSymbolNames(self, symbol_cstrs: SymbolConstraints):
+  def GetConstraintsSymbolNames(self, constraints: t.List[Constraint]):
     symbol_names_ctx : t.List[SymbolName] = []
-    for constraint in symbol_cstrs.constraints:
+    for constraint in constraints:
       self.CollectCstrSymbolName(constraint, symbol_names_ctx)
     return self.Unique(symbol_names_ctx)
 
@@ -295,6 +302,14 @@ class ValidExampleInputsSolver:
       constraint=constraint,
       symbol_names_ctx=symbol_names_ctx,
     )
+
+  def CollectCstrSymbolName_NoConstraint(
+    self,
+    constraint: ir_constraint.EqualConstraint,
+    symbol_names_ctx: t.List[SymbolName],
+  ):
+    for dim_expr in constraint.no_dim_exprs:
+      self.CollectDimExprSymbolName(dim_expr, symbol_names_ctx)
 
   def CollectCstrSymbolName_EqualConstraint(
     self,
@@ -407,13 +422,13 @@ class ValidExampleInputsSolver:
       constraints=symbol_cstrs.constraints,
       dim_expr2symmetric_dim_var_ctx=dim_expr2symmetric_dim_var_ctx,
     )
-    core_input_names = self.GetSymbolConstraintsListInputNames(constraints)
+    core_input_names = self.GetConstraintsSymbolNames(constraints)
     symmetric_dim_vars = [
       dim_expr2symmetric_dim_var_ctx[ir_symbol.String(core_input_name)]
       for core_input_name in core_input_names
     ]
     return DecomposedSymbolConstraints(
-      input_names=symbol_cstrs.input_names
+      input_names=symbol_cstrs.input_names,
       core_symbol_cstrs=SymbolConstraints(
         input_names=core_input_names,
         constraints=constraints,
@@ -428,8 +443,12 @@ class ValidExampleInputsSolver:
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> t.List[Constraint]:
     return [
-      self.DecomposeConstraint(constraint, dim_expr2symmetric_dim_var_ctx)
+      decomposed
       for constraint in constraints
+      for decomposed in [
+        self.DecomposeConstraint(constraint, dim_expr2symmetric_dim_var_ctx)
+      ]
+      if decomposed is not None
     ]
   
   def DecomposeConstraint(
@@ -443,6 +462,7 @@ class ValidExampleInputsSolver:
     )
 
   def DecomposeConstraint_EqualConstraint(
+    self,
     constraint: ir_constraint.EqualConstraint,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> Constraint:
@@ -455,6 +475,7 @@ class ValidExampleInputsSolver:
     )
     
   def DecomposeConstraint_BroadcastableConstraint(
+    self,
     constraint: ir_constraint.BroadcastableConstraint,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> Constraint:
@@ -467,6 +488,7 @@ class ValidExampleInputsSolver:
     )
 
   def DecomposeVariadicConstraint(
+    self,
     constraint: Constraint,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar],
     GetDimExprs: Callable[Constraint, t.List[DimExpr]],
@@ -495,7 +517,13 @@ class ValidExampleInputsSolver:
       for dim_expr in core_dim_exprs
       if dim_expr not in dim_expr2symmetric_dim_var_ctx
     ]
-    return MakeConstraint([symbol_dim_expr] + non_symmetric_dim_exprs)
+    args = [symbol_dim_expr] + non_symmetric_dim_exprs
+    return MakeConstraint(args) if len(args) > 1 else ir_constraint.NoConstraint(args)
+
+  def NewSymbolName(self):
+    symbol_name = f"{self.core_symbol_name_prefix_}{self.core_symbol_name_seq_}"
+    self.core_symbol_name_seq_ += 1
+    return symbol_name
         
   def DecomposeConstraint_GtOneConstraint(
     constraint: ir_constraint.GtOneConstraint,
@@ -507,6 +535,7 @@ class ValidExampleInputsSolver:
     ])
 
   def DecomposeDimExpr(
+    self,
     dim_expr: DimExpr,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
@@ -516,12 +545,14 @@ class ValidExampleInputsSolver:
     )
 
   def DecomposeDimExpr_Int64(
+    self,
     dim_expr: ir_symbol.Int64,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
     return dim_expr
     
   def DecomposeDimExpr_String(
+    self,
     dim_expr: ir_symbol.String,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
@@ -532,6 +563,7 @@ class ValidExampleInputsSolver:
     return ret_dim_expr
     
   def DecomposeDimExpr_Negative(
+    self,
     dim_expr: ir_symbol.Negative,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
@@ -542,6 +574,7 @@ class ValidExampleInputsSolver:
     )
     
   def DecomposeDimExpr_Reciprocal(
+    self,
     dim_expr: ir_symbol.Reciprocal,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
@@ -552,6 +585,7 @@ class ValidExampleInputsSolver:
     )
     
   def DecomposeUnaryDimExpr(
+    self,
     dim_expr: ir_symbol.Reciprocal,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar],
     MakeDimExpr: Callable[DimExpr, DimExpr]
@@ -560,10 +594,11 @@ class ValidExampleInputsSolver:
     return MakeDimExpr(operand)
     
   def DecomposeDimExpr_Add(
+    self,
     dim_expr: ir_symbol.Add,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
-    return DecomposeVariadicDimExpr(
+    return self.DecomposeVariadicDimExpr(
       dim_expr=dim_expr,
       dim_expr2symmetric_dim_var_ctx=dim_expr2symmetric_dim_var_ctx,
       MakeDimExpr=ir_symbol.Add,
@@ -571,10 +606,11 @@ class ValidExampleInputsSolver:
     )
     
   def DecomposeDimExpr_Mul(
+    self,
     dim_expr: ir_symbol.Mul,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
-    return DecomposeVariadicDimExpr(
+    return self.DecomposeVariadicDimExpr(
       dim_expr=dim_expr,
       dim_expr2symmetric_dim_var_ctx=dim_expr2symmetric_dim_var_ctx,
       MakeDimExpr=ir_symbol.Mul,
@@ -582,10 +618,11 @@ class ValidExampleInputsSolver:
     )
     
   def DecomposeDimExpr_Max(
+    self,
     dim_expr: ir_symbol.Max,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
-    return DecomposeVariadicDimExpr(
+    return self.DecomposeVariadicDimExpr(
       dim_expr=dim_expr,
       dim_expr2symmetric_dim_var_ctx=dim_expr2symmetric_dim_var_ctx,
       MakeDimExpr=ir_symbol.Max,
@@ -593,10 +630,11 @@ class ValidExampleInputsSolver:
     )
     
   def DecomposeDimExpr_Min(
+    self,
     dim_expr: ir_symbol.Min,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
-    return DecomposeVariadicDimExpr(
+    return self.DecomposeVariadicDimExpr(
       dim_expr=dim_expr,
       dim_expr2symmetric_dim_var_ctx=dim_expr2symmetric_dim_var_ctx,
       MakeDimExpr=ir_symbol.Min,
@@ -604,10 +642,11 @@ class ValidExampleInputsSolver:
     )
     
   def DecomposeDimExpr_Broadcast(
+    self,
     dim_expr: ir_symbol.Broadcast,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar]
   ) -> DimExpr:
-    return DecomposeVariadicDimExpr(
+    return self.DecomposeVariadicDimExpr(
       dim_expr=dim_expr,
       dim_expr2symmetric_dim_var_ctx=dim_expr2symmetric_dim_var_ctx,
       MakeDimExpr=ir_symbol.Broadcast,
@@ -615,6 +654,7 @@ class ValidExampleInputsSolver:
     )
     
   def DecomposeVariadicDimExpr(
+    self,
     dim_expr: DimExpr,
     dim_expr2symmetric_dim_var_ctx: t.Dict[DimExpr, SymmetricDimVar],
     MakeDimExpr: Callable[t.List[DimExpr], DimExpr],
@@ -662,7 +702,7 @@ class ValidExampleInputsSolver:
     symbol_cstrs: SymbolConstraints,
   ) -> ExampleInputDims:
     input_names = symbol_cstrs.input_names
-    assert self.GetSymbolConstraintsSymbolNames(symbol_cstrs) == input_names
+    assert self.GetConstraintsSymbolNames(symbol_cstrs.constraints) == input_names
     symbol2example_dims_ndarray = self.MakeSymbol2ExampleDimsNdarray(
       input_names
     )
@@ -691,8 +731,19 @@ class ValidExampleInputsSolver:
     symbol2example_dims_ndarray: t.Dict[SymbolName, ExampleInputDims],
   ) -> np.ndarray:
     return getattr(self, f"EvalConstraintTestNdarray_{type(constraint).__name__}")(
-      constraint
+      constraint=constraint,
+      symbol2example_dims_ndarray=symbol2example_dims_ndarray,
     )
+
+  def EvalConstraintTestNdarray_NoConstraint(
+    self,
+    constraint: ir_constraint.EqualConstraint,
+    symbol2example_dims_ndarray: t.Dict[SymbolName, ExampleInputDims],
+  ) -> np.ndarray:
+    ret = True
+    for _, example_dims_ndarray in symbol2example_dims_ndarray.items():
+      ret = np.logical_or(ret, example_dims_ndarray)
+    return ret
 
   def EvalConstraintTestNdarray_EqualConstraint(
     self,
@@ -725,6 +776,7 @@ class ValidExampleInputsSolver:
     BinaryLogicalPredicator: Callable[[np.ndarray, np.ndarray], np.ndarray],
   ) -> np.ndarray:
     dim_exprs = constraint.equal_dim_exprs
+    assert len(constraint.equal_dim_exprs) > 1
     eq_operand_pairs = [
       (dim_exprs[i], dim_exprs[i+1])
       for i in range(len(dim_exprs) - 1)
@@ -857,7 +909,22 @@ class ValidExampleInputsSolver:
       Accumulator=Accumulator,
     )
 
+  def EvalVariadicDimExprTestNdarray(
+    self,
+    dim_expr: ir_symbol.DimExpr,
+    symbol2example_dims_ndarray: t.Dict[SymbolName, ExampleInputDims],
+    Accumulator: t.Callable[[np.ndarray, ir_symbol.DimExpr], np.ndarray],
+  ) -> np.ndarray:
+    operands = dim_expr.operands
+    assert len(operands) > 0
+    ret = self.EvalDimExprTestNdarray(operands[0], symbol2example_dims_ndarray)
+    for operand in operands[1:]:
+      ret = Accumulator(ret, operand)
+    return ret
+
+
   def MakeExampleInputDimsFromConstraintsTestNdarray(
+    self,
     constraints_test_ndarray: np.ndarray
   ):
     dim_indexes_tuple = np.where(constraints_test_ndarray)
@@ -894,7 +961,7 @@ class ValidExampleInputsSolver:
     core_example_input_dims: ExampleInputDims,
     symmetric_dim_vars: t.List[SymmetricDimVar],
   ) -> ExampleInputDims:
-    expander = self.SymmetricDimsExpander(input_names, symmetric_dim_vars)
+    expander = SymmetricDimsExpander(input_names, symmetric_dim_vars)
     shape_list = [
       expanded_shape
       for core_example_input_shape in core_example_input_dims.tolist()
@@ -919,7 +986,7 @@ class SymmetricDimsExpander:
     kMaxTryCnt = 16
     for i in range(kMaxTryCnt):
       input_name2dim = reduce(
-        lambda x, y: x + y,
+        lambda x, y: {**x, **y},
         (
           self.ExpandSymmetricDimVar(dim, symmetric_dim_var)
           for dim, symmetric_dim_var in zip(
@@ -928,7 +995,7 @@ class SymmetricDimsExpander:
           )
         )
       )
-      if len(input_name2dim) == len(input_names):
+      if len(input_name2dim) == len(self.input_names):
         yield [input_name2dim[input_name] for input_name in self.input_names]
         return
     yield from []
@@ -985,7 +1052,7 @@ class SymmetricDimsExpander:
     operands = symmetric_dim_var.symmetric_dim_vars
     add_operands = self.RandomInferAddOperands(
       dim=dim,
-      num_add_operands=len(symmetric_dim_var.symmetric_dim_vars),
+      num_operands=len(symmetric_dim_var.symmetric_dim_vars),
     )
     for operand_dim, sub_symmetric_dim_var in zip(add_operands, operands):
       self.CollectExpandedInputName2Dim(
@@ -1000,7 +1067,17 @@ class SymmetricDimsExpander:
     symmetric_dim_var: SymmetricDimVar,
     input_name2dim_ctx: t.Dict[SymbolName, Dim],
   ):
-    TODO
+    operands = symmetric_dim_var.symmetric_dim_vars
+    mul_operands = self.RandomInferMulOperands(
+      dim=dim,
+      num_operands=len(symmetric_dim_var.symmetric_dim_vars),
+    )
+    for operand_dim, sub_symmetric_dim_var in zip(mul_operands, operands):
+      self.CollectExpandedInputName2Dim(
+        dim=operand_dim,
+        symmetric_dim_var=sub_symmetric_dim_var,
+        input_name2dim_ctx=input_name2dim_ctx,
+      )
 
   def CollectExpandedInputName2Dim_MaxSymmetricDimVar(
     self,
@@ -1008,7 +1085,17 @@ class SymmetricDimsExpander:
     symmetric_dim_var: SymmetricDimVar,
     input_name2dim_ctx: t.Dict[SymbolName, Dim],
   ):
-    TODO
+    operands = symmetric_dim_var.symmetric_dim_vars
+    max_operands = self.RandomInferMaxOperands(
+      dim=dim,
+      num_operands=len(symmetric_dim_var.symmetric_dim_vars),
+    )
+    for operand_dim, sub_symmetric_dim_var in zip(max_operands, operands):
+      self.CollectExpandedInputName2Dim(
+        dim=operand_dim,
+        symmetric_dim_var=sub_symmetric_dim_var,
+        input_name2dim_ctx=input_name2dim_ctx,
+      )
 
   def CollectExpandedInputName2Dim_MinSymmetricDimVar(
     self,
@@ -1016,7 +1103,17 @@ class SymmetricDimsExpander:
     symmetric_dim_var: SymmetricDimVar,
     input_name2dim_ctx: t.Dict[SymbolName, Dim],
   ):
-    TODO
+    operands = symmetric_dim_var.symmetric_dim_vars
+    min_operands = self.RandomInferMinOperands(
+      dim=dim,
+      num_operands=len(symmetric_dim_var.symmetric_dim_vars),
+    )
+    for operand_dim, sub_symmetric_dim_var in zip(min_operands, operands):
+      self.CollectExpandedInputName2Dim(
+        dim=operand_dim,
+        symmetric_dim_var=sub_symmetric_dim_var,
+        input_name2dim_ctx=input_name2dim_ctx,
+      )
 
   def CollectExpandedInputName2Dim_BroadcastSymmetricDimVar(
     self,
@@ -1024,11 +1121,94 @@ class SymmetricDimsExpander:
     symmetric_dim_var: SymmetricDimVar,
     input_name2dim_ctx: t.Dict[SymbolName, Dim],
   ):
-    TODO
+    operands = symmetric_dim_var.symmetric_dim_vars
+    broadcast_operands = self.RandomInferBroadcastOperands(
+      dim=dim,
+      num_operands=len(symmetric_dim_var.symmetric_dim_vars),
+    )
+    for operand_dim, sub_symmetric_dim_var in zip(broadcast_operands, operands):
+      self.CollectExpandedInputName2Dim(
+        dim=operand_dim,
+        symmetric_dim_var=sub_symmetric_dim_var,
+        input_name2dim_ctx=input_name2dim_ctx,
+      )
 
   def RandomInferAddOperands(
     self,
     dim: int,
-    num_add_operands: int,
+    num_operands: int,
   ) -> t.List[int]:
-    TODO
+    ret = [0] * num_operands
+    for _ in range(dim):
+      ret[random.randrange(0, num_operands)] += 1
+    return ret
+
+  def RandomInferMulOperands(
+    self,
+    dim: int,
+    num_operands: int,
+  ) -> t.List[int]:
+    ret = [1] * num_operands
+    for factor in self.GetFactors(dim):
+      ret[random.randrange(0, num_operands)] *= factor
+    return ret
+
+  def RandomInferMaxOperands(
+    self,
+    dim: int,
+    num_operands: int,
+  ) -> t.List[int]:
+    ret = [0] * num_operands
+    ret[random.randrange(0, num_operands)] = dim
+    for i in range(num_operands):
+      ret[i] = random.randint(0, num_operands)
+    return ret
+
+  def RandomInferMinOperands(
+    self,
+    dim: int,
+    num_operands: int,
+  ) -> t.List[int]:
+    ret = [0] * num_operands
+    ret[random.randrange(0, num_operands)] = dim
+    for i in range(num_operands):
+      ret[i] = random.randint(num_operands, num_operands*2)
+    return ret
+
+  def RandomInferBroadcastOperands(
+    self,
+    dim: int,
+    num_operands: int,
+  ) -> t.List[int]:
+    ret = [0] * num_operands
+    for i in range(num_operands):
+      ret[i] = 1 + random.randint(0, 1) * (dim - 1)
+    return ret
+
+  def GetFactors(self, n: int) -> t.List[int]:
+    prime_numbers = self.GetPrimeNumbers()
+    for prime in prime_numbers:
+      if prime * prime > n:
+        break
+      while n % prime == 0:
+        yield prime
+        n = n // prime
+    if n != 1:
+      yield n
+
+
+  def GetPrimeNumbers(self) -> t.List[int]:
+    return type(self).prime_numbers
+
+  prime_numbers = [
+    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
+    101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199,
+    211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293,
+    307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397,
+    401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499,
+    503, 509, 521, 523, 541, 547, 557, 563, 569, 571, 577, 587, 593, 599,
+    601, 607, 613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691,
+    701, 709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797,
+    809, 811, 821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887,
+    907, 911, 919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997,
+  ]

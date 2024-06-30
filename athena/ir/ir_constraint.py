@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import typing as t
 import athena.ir.ir_symbol as ir_symbol
+from athena.util.hash_combine import hash_combine
 
 @dataclass
 class ConstraintRecord:
@@ -25,16 +26,43 @@ class Constraint:
   pass
 
 @dataclass
+class NoConstraint(Constraint):
+  no_dim_exprs: t.List[ir_symbol.DimExpr]
+
+  def __hash__(self):
+    hash_value = id(NoConstraint)
+    for dim_expr in self.equal_dim_exprs:
+      hash_value = hash_combine(hash_value, hash(dim_expr))
+    return hash_value
+
+@dataclass
 class EqualConstraint(Constraint):
   equal_dim_exprs: t.List[ir_symbol.DimExpr]
+
+  def __hash__(self):
+    hash_value = id(EqualConstraint)
+    for dim_expr in self.equal_dim_exprs:
+      hash_value = hash_combine(hash_value, hash(dim_expr))
+    return hash_value
 
 @dataclass
 class BroadcastableConstraint(Constraint):
   braodcastable_dim_exprs: t.List[ir_symbol.DimExpr]
 
+  def __hash__(self):
+    hash_value = id(BroadcastableConstraint)
+    for dim_expr in self.braodcastable_dim_exprs:
+      hash_value = hash_combine(hash_value, hash(dim_expr))
+    return hash_value
+
 @dataclass
 class GtOneConstraint(Constraint):
   gt_one_dim_expr: ir_symbol.DimExpr
+
+  def __hash__(self):
+    hash_value = id(GtOneConstraint)
+    hash_value = hash_combine(hash_value, hash(self.gt_one_dim_expr))
+    return hash_value
 
 @dataclass
 class SymmetricDimVar:
