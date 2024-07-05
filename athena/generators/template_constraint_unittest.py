@@ -42,25 +42,9 @@ cinn_stages = [
         ),
     ),
 	Stage(
-        name="frontend",
+        name="check_constraints",
         env_vars=dict(
-            PADDLE_DEBUG_ENABLE_CINN=True,
-            FLAGS_prim_all=True,
-            FLAGS_prim_enable_dynamic=True,
-            FLAGS_use_cinn=True,
-            FLAGS_check_infer_symbolic=False,
-            FLAGS_enable_fusion_fallback=True,
-        ), 
-    ),
-    Stage(
-        name="backend",
-        env_vars=dict(
-            PADDLE_DEBUG_ENABLE_CINN=True,
-            FLAGS_prim_all=True,
-            FLAGS_prim_enable_dynamic=True,
-            FLAGS_use_cinn=True,
-            FLAGS_check_infer_symbolic=False,
-            FLAGS_enable_fusion_fallback=False,
+            PADDLE_DEBUG_ENABLE_JIT=False,
         ), 
     ),
 ]
@@ -125,8 +109,8 @@ def SetDefaultEnv(**env_var2value):
             os.environ[env_var] = str(value)
 
 SetDefaultEnv(
-    PADDLE_DEBUG_CINN_STAGE_NAME="backend",
-    PADDLE_DEBUG_CINN_STAGE_ENABLE_DIFF=False,
+    PADDLE_DEBUG_CINN_STAGE_NAME='check_constraints',
+    PADDLE_DEBUG_CINN_STAGE_ENABLE_DIFF=True,
     PADDLE_DEBUG_ENABLE_CINN=True,
     FLAGS_enable_pir_api=True,
     FLAGS_prim_all=True,
@@ -326,31 +310,31 @@ class CinnTestBase:
 {%- endmacro %}
 
 {% macro get_primitive_class_methods(op) %}
-    def __init__(self):
-        super().__init__()
+        def __init__(self):
+            super().__init__()
 
-    def forward(self{{", "}}
-        {%- for tensor_id in op.tensor_ids -%}
-        {%- if loop.index0 > 0 -%}{{", "}}{%- endif -%}
-        {{op.tensor_name4tensor_id(tensor_id)}}
-        {%- endfor -%}
-    ):
-        {%- for operand_id in op.operand_ids %}
-        {{op.tensor_name4operand_id(operand_id)}} = {{get_operand_value(op, operand_id)}}
-        {%- endfor %}
-        return {{ op.op_expr }}
+        def forward(self{{", "}}
+            {%- for tensor_id in op.tensor_ids -%}
+            {%- if loop.index0 > 0 -%}{{", "}}{%- endif -%}
+            {{op.tensor_name4tensor_id(tensor_id)}}
+            {%- endfor -%}
+        ):
+            {%- for operand_id in op.operand_ids %}
+            {{op.tensor_name4operand_id(operand_id)}} = {{get_operand_value(op, operand_id)}}
+            {%- endfor %}
+            return {{ op.op_expr }}
 
-    def get_input_spec(self):
-        return [
-        {%- for tensor_id in op.tensor_ids %}
-        {%- set shape, dtype = op.input_spec_shape_dtype4tensor_id(tensor_id) %}
-            paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
-        {%- endfor %}
-        ]
-        
-    instance_ = None
-    static_instance_with_cinn_ = None
-    static_instance_without_cinn_ = None
+        def get_input_spec(self):
+            return [
+            {%- for tensor_id in op.tensor_ids %}
+            {%- set shape, dtype = op.input_spec_shape_dtype4tensor_id(tensor_id) %}
+                paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
+            {%- endfor %}
+            ]
+            
+        instance_ = None
+        static_instance_with_cinn_ = None
+        static_instance_without_cinn_ = None
 
 {% endmacro %}
 
@@ -359,35 +343,35 @@ PrimitiveOp_{{get_sha_hash_prefix(get_primitive_class_methods(op))}}
 {%- endmacro -%}
 
 {% macro get_test_class_methods(op) %}
-    def get_test_class(self):
-        return {{get_primitive_class_name(op)}}
-    def get_inputs(self):
-        return [
-        {%- for tensor_id in op.tensor_ids %}
-        {%- set example_tensor_meta = op.example_input_meta4tensor_id(tensor_id) %}
-            {{get_input_tensor_instance(example_tensor_meta)}},
-        {%- endfor %}
-        ]
+        def get_test_class(self):
+            return {{get_primitive_class_name(op)}}
+        def get_inputs(self):
+            return [
+            {%- for tensor_id in op.tensor_ids %}
+            {%- set example_tensor_meta = op.example_input_meta4tensor_id(tensor_id) %}
+                {{get_input_tensor_instance(example_tensor_meta)}},
+            {%- endfor %}
+            ]
 {% endmacro %}
 
 {%- macro get_test_class_name(op) -%}
 TestPrimitiveOp_{{get_sha_hash_prefix(get_test_class_methods(op))}}
 {%- endmacro -%}
 
-last_stage_failed = (IsCinnStageEnableDiff() and LastCINNStageFailed())
+if not (IsCinnStageEnableDiff() and LastCINNStageFailed()):
 
-{%- for op in ops %}
-{%- if not is_cached_before(get_primitive_class_name(op)) %}
-class {{get_primitive_class_name(op)}}(InstanceTrait, paddle.nn.Layer):
-    {{get_primitive_class_methods(op)}}
-{{cache(get_primitive_class_name(op))}}
-{%- endif -%}
+    {%- for op in ops %}
+    {%- if not is_cached_before(get_primitive_class_name(op)) %}
+    class {{get_primitive_class_name(op)}}(InstanceTrait, paddle.nn.Layer):
+        {{get_primitive_class_methods(op)}}
 
-@unittest.skipIf(last_stage_failed, "last stage failed")
-class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
-    {{get_test_class_methods(op)}}
+    class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
+        {{get_test_class_methods(op)}}
 
-{% endfor %}
+    {{cache(get_primitive_class_name(op))}}
+    {%- endif -%}
+
+    {% endfor %}
 
 if __name__ == '__main__':
     unittest.main()

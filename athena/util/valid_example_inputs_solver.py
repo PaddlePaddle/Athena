@@ -1188,7 +1188,7 @@ class SymmetricDimsExpander:
   def GetFactors(self, n: int) -> t.List[int]:
     prime_numbers = self.GetPrimeNumbers()
     for prime in prime_numbers:
-      if prime * prime > n:
+      if n < prime:
         break
       while n % prime == 0:
         yield prime

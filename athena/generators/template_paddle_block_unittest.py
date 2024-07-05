@@ -34,7 +34,7 @@ cinn_stages = [
     Stage(
         name="infer_symbolic",
         env_vars=dict(
-            PADDLE_DEBUG_ENABLE_CINN=True,
+            PADDLE_DEBUG_ENABLE_CINN=False,
             FLAGS_prim_all=True,
             FLAGS_prim_enable_dynamic=True,
             FLAGS_use_cinn=False,
@@ -125,6 +125,8 @@ def SetDefaultEnv(**env_var2value):
             os.environ[env_var] = str(value)
 
 SetDefaultEnv(
+    PADDLE_DEBUG_CINN_STAGE_NAME="backend",
+    PADDLE_DEBUG_CINN_STAGE_ENABLE_DIFF=False,
     PADDLE_DEBUG_ENABLE_CINN=True,
     FLAGS_enable_pir_api=True,
     FLAGS_prim_all=True,
@@ -133,6 +135,8 @@ SetDefaultEnv(
     FLAGS_check_infer_symbolic=False,
     FLAGS_enable_fusion_fallback=False,
 )
+
+last_stage_failed = (IsCinnStageEnableDiff() and LastCINNStageFailed())
 
 import paddle
 
@@ -333,44 +337,46 @@ class Block_{{block.block_name}}(paddle.nn.Layer, BlockEntries):
     
     {%- endfor %}
 
-if {{block.is_entry_block}} and not (IsCinnStageEnableDiff() and LastCINNStageFailed()):
+is_module_block_and_last_stage_passed = (
+    {{block.is_entry_block}} and not last_stage_failed
+)
+@unittest.skipIf(not is_module_block_and_last_stage_passed, "last stage failed")
+class Test_{{block.block_name}}(CinnTestBase, unittest.TestCase):
+    def prepare_data(self):
+        self.inputs = [
+        {%- for arg_name in block.input_arg_names %}
+        {%- set input_idx = loop.index0 %}
+            # {{arg_name}}
+            {{get_input_tensor_instance(block, block_idx, input_idx)}},
+        {%- endfor %}
+        ]
+        for input in self.inputs:
+            input.stop_gradient = True
 
-    class Test_{{block.block_name}}(CinnTestBase, unittest.TestCase):
-        def prepare_data(self):
-            self.inputs = [
-            {%- for arg_name in block.input_arg_names %}
-            {%- set input_idx = loop.index0 %}
-                # {{arg_name}}
-                {{get_input_tensor_instance(block, block_idx, input_idx)}},
-            {%- endfor %}
-            ]
-            for input in self.inputs:
-                input.stop_gradient = True
+    def apply_to_static(self, net, use_cinn):
+        build_strategy = paddle.static.BuildStrategy()
+        input_spec = [
+        {%- for shape, dtype in block.input_spec_shape_dtypes %}
+        {%- set input_idx = loop.index0 %}
+            # {{block.input_arg_names[input_idx]}}
+            paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
+        {%- endfor %}
+        ]
+        build_strategy.build_cinn_pass = use_cinn
+        return paddle.jit.to_static(
+            net,
+            input_spec=input_spec,
+            build_strategy=build_strategy,
+            full_graph=True,
+        )
 
-        def apply_to_static(self, net, use_cinn):
-            build_strategy = paddle.static.BuildStrategy()
-            input_spec = [
-            {%- for shape, dtype in block.input_spec_shape_dtypes %}
-            {%- set input_idx = loop.index0 %}
-                # {{block.input_arg_names[input_idx]}}
-                paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
-            {%- endfor %}
-            ]
-            build_strategy.build_cinn_pass = use_cinn
-            return paddle.jit.to_static(
-                net,
-                input_spec=input_spec,
-                build_strategy=build_strategy,
-                full_graph=True,
-            )
-
-        def train(self, use_cinn):
-            net = Block_{{block.block_name}}()
-            if GetEnvVarEnableJit():
-                net = self.apply_to_static(net, use_cinn)
-            paddle.seed(2024)
-            out = net(*self.inputs)
-            return out
+    def train(self, use_cinn):
+        net = Block_{{block.block_name}}()
+        if GetEnvVarEnableJit():
+            net = self.apply_to_static(net, use_cinn)
+        paddle.seed(2024)
+        out = net(*self.inputs)
+        return out
 {%- endif %}
 {%- endfor %}
 
