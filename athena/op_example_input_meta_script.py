@@ -6,6 +6,7 @@ from athena.util.example_inputs_meta_getter import ExampleInputsMetaGetter
 from athena.generators.op_example_input_meta_script_generator import (
   OpExampleInputMetaScriptGenerator
 )
+from athena.util.primitive_op_extractor import PrimitiveOpExtractor
 from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
 import athena.ir.ir_op as ir_op
 import sys
@@ -15,6 +16,7 @@ import hashlib
 import os
 import glob
 import itertools
+import athena.ir.ir_type as ir_type
 
 FLAGS = flags.FLAGS
 
@@ -95,6 +97,24 @@ def HasExampleInputs(ir_program, example_inputs_meta_getter):
     input_tensors=input_tensors
   )
 
+def OnlyValidTypes(ir_program):
+  primitive_op_extractor = PrimitiveOpExtractor()
+  valid_operand_types = (ir_type.DenseTensorType, ir_type.NullType, ir_type.VectorType)
+  def AllValidInputTypes(op):
+    return all(
+      isinstance(input_type, valid_operand_types)
+      for input_type in op.input_types
+    )
+  def AllValidOutputTypes(op):
+    return all(
+      isinstance(output_type, valid_operand_types)
+      for output_type in op.output_types
+    )
+  return all(
+    AllValidInputTypes(op) and AllValidOutputTypes(op)
+    for op in primitive_op_extractor.Extract(ir_program)
+  )
+
 def GetOutputUnittests(original_programs_file, example_inputs_file):
   example_inputs_meta_getter = MakeExampleInputsMetaGetter(example_inputs_file)
   classes = GetProgramClasses(original_programs_file)
@@ -105,6 +125,7 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
     if not IsBackwardProgram(ir_program)
     if not IsProgramEmpty(ir_program)
     if HasExampleInputs(ir_program, example_inputs_meta_getter)
+    if OnlyValidTypes(ir_program)
   )
   def GetBucket(elem):
     i, _ = elem

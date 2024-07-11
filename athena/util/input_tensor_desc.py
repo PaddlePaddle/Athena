@@ -29,9 +29,14 @@ type2bigger_type = dict(
   float16="float64",
   float32="float64",
   float64="float64",
+  int8="int64",
   int16="int64",
   int32="int64",
   int64="int64",
+  uint8="int64",
+  uint16="int64",
+  uint32="int64",
+  uint64="int64",
 )
 
 class InitMinGetter:
@@ -50,11 +55,30 @@ class InitMinGetter:
   def float64():
     return "0"
 
+  def int8():
+    return "0"
+
+  def int16():
+    return "0"
+
   def int32():
     return "0"
 
   def int64():
     return "0"
+
+  def uint8():
+    return "0"
+
+  def uint16():
+    return "0"
+
+  def uint32():
+    return "0"
+
+  def uint64():
+    return "0"
+
 
 
 class InitMaxGetter:
@@ -73,9 +97,27 @@ class InitMaxGetter:
   def float64():
     return "0.5" 
     
+  def int8():
+    return "3"
+
+  def int16():
+    return "3"
+
   def int32():
     return "3"
 
   def int64():
+    return "3"
+
+  def uint8():
+    return "3"
+
+  def uint16():
+    return "3"
+
+  def uint32():
+    return "3"
+
+  def uint64():
     return "3"
 

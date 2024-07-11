@@ -55,7 +55,23 @@ class BlockOpCallsExtractor:
     ))
     return op.GetResults()
 
+  def builtin_constant(self, op):
+    self.block_op_calls.input_op_calls.append(OpCall(
+      op=op,
+      input_tensors=[],
+      kwargs={}
+    ))
+    return op.GetResults()
+
   def pd_op_data(self, op):
+    self.block_op_calls.input_op_calls.append(OpCall(
+      op=op,
+      input_tensors=[],
+      kwargs={}
+    ))
+    return op.GetResults()
+
+  def pd_op_feed(self, op):
     self.block_op_calls.input_op_calls.append(OpCall(
       op=op,
       input_tensors=[],

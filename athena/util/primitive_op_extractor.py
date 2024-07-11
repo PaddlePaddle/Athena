@@ -16,7 +16,9 @@ class PrimitiveOpExtractor:
   def GetInputOutputOpNames(self):
     return {
       "pd_op.data",
+      "pd_op.feed",
       "builtin.parameter",
+      "builtin.constant",
       "cf.yield",
       "builtin.shadow_output",
       "pd_op.fetch",

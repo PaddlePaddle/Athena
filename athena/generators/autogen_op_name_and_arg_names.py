@@ -2493,5 +2493,7 @@ phi_ops_yaml_ops = [('abs', ('Tensor', 'x')),
   ('str', 'act_type')),
  ('number_count', ('Tensor', 'numbers'), ('int', 'upper_range'))]
 
-
-op_name_x_arg_names = phi_ops_yaml_legacy_static_ops + phi_ops_yaml_ops
+op_name_x_arg_names = (
+  phi_ops_yaml_legacy_static_ops
+  + phi_ops_yaml_ops
+)

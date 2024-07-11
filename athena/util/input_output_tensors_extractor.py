@@ -15,7 +15,13 @@ class InputOutputTensorsExtractor:
   def pd_op_data(self, op):
     self.input_tensors += list(op.GetResults())
 
+  def pd_op_feed(self, op):
+    self.input_tensors += list(op.GetResults())
+
   def builtin_parameter(self, op):
+    self.input_tensors += list(op.GetResults())
+
+  def builtin_constant(self, op):
     self.input_tensors += list(op.GetResults())
 
   def builtin_shadow_output(self, op, *inputs):

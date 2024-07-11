@@ -129,7 +129,11 @@ class PaddleOpCallGenerator:
       assert len(inputs) + len(attr_names) == len(c_ops_arg_names), f"op: {op.name}, len(inputs): {len(inputs)}, attr_names: {attr_names}, c_ops_arg_names: {c_ops_arg_names}"
       return True
     if ValidCOpsCall():
-      return self.GenerateCOpsCall(op, inputs, c_ops_arg_names)
+      return self.GenerateCOpsCall(
+        op_name=self.PaddleMethodName(op),
+        inputs=inputs,
+        attrs=op.attrs,
+      )
     assert op.GetValidPyVarNameComponents()[0] == "pd_op", f"op.name: {op.name}"
     return self.GenerateDefaultOpCall(self.m, op, *inputs)
 
@@ -158,7 +162,8 @@ class PaddleOpCallGenerator:
       attr_str = ", " + attr_str
     return f"{m}.{self.PaddleMethodName(op)}({input_names}{attr_str})"
 
-  def GenerateCOpsCall(self, op, inputs, arg_names):
+  def GenerateCOpsCall(self, op_name, inputs, attrs):
+    arg_names = GetCOpsArgNames(op_name)
     pos_arg_idx = -1
     def GetPosArgVarName():
       nonlocal pos_arg_idx
@@ -171,11 +176,11 @@ class PaddleOpCallGenerator:
       return t.name
     m = f"{self.m}._C_ops"
     args = [
-      op.attrs[arg_name] if arg_name in op.attrs else GetPosArgVarName()
+      attrs[arg_name] if arg_name in attrs else GetPosArgVarName()
       for arg_name in arg_names
     ]
     args_str = ", ".join(args)
-    return f"{m}.{self.PaddleMethodName(op)}({args_str})"
+    return f"{m}.{op_name}({args_str})"
 
   def pd_op_dropout(self, op, *inputs):
     op_call_str = self._GenerateOpCall(op, *inputs)
@@ -227,13 +232,16 @@ class PaddleOpCallGenerator:
   def builtin_shadow_output(self, op, *inputs):
     return None
 
-  def pd_op_fetch(self, op, *inputs):
-    return None
-
   def builtin_parameter(self, op):
     return None
 
+  def builtin_constant(self, op):
+    return None
+
   def pd_op_data(self, op):
+    return None
+
+  def pd_op_feed(self, op):
     return None
 
   def pd_op_elementwise_pow(self, op, x, y):
@@ -242,6 +250,10 @@ class PaddleOpCallGenerator:
   def builtin_combine(self, op, *inputs):
     operands = ", ".join([input.name for input in inputs])
     return f"[{operands}]"
+
+  def builtin_slice(self, op, x):
+    index = op.attrs['index']
+    return f"{x.name}[{index}]"
 
   def builtin_split(self, op, x):
     return x.name

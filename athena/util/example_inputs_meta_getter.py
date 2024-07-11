@@ -28,6 +28,8 @@ class ExampleInputsMetaGetter:
       return False
     if input_tensor.defining_op_name == "builtin.parameter":
       return True
+    if input_tensor.defining_op_name == "builtin.constant":
+      return True
     if self.IsSmallIntegerTensor(static_shape, input_tensor.dtype):
       return False
     return True

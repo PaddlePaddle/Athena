@@ -19,6 +19,9 @@ class BlocksGenerator:
   def get_block_func_args_pd_op_while(self, op, owner_op_args, region_idx, block_idx):
     return owner_op_args[1:]
 
+  def get_block_func_args_pd_op_if(self, op, owner_op_args, region_idx, block_idx):
+    return []
+
   def get_block_func_args_builtin_module(self, op, owner_op_args, region_idx, block_idx):
     # TODO
     return owner_op_args

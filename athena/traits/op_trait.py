@@ -8,6 +8,8 @@ class OpTrait:
     block_positional_arg_names = None, block_keyword_arg_names = None,
     block_positional_arg_types = None, block_keyword_arg_types = None
   ):
+    if name == 'pd_kernel.phi_kernel':
+      name = attrs['op_name'].value
     return ir_op.Op(
       name=name,
       op_id=op_id,

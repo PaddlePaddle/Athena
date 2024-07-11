@@ -11,6 +11,18 @@ class TypeTrait:
   def t_dtensor(self, shape, dtype):
     return ir_type.DenseTensorType(shape, dtype)
 
+  def t_selected_rows(self):
+    return ir_type.SelectedRowsType()
+
+  def t_dense_tensor_array(self):
+    return ir_type.DenseTensorArrayType()
+
+  def t_sparse_coo_tensor(self):
+    return ir_type.SparseCooTensorType()
+
+  def t_sparse_csr_tensor(self):
+    return ir_type.SparseCsrTensorType()
+
   def t_bf16(self):
     return ir_type.BFloat16Type()
 

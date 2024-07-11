@@ -115,6 +115,36 @@ class PaddleFuncBodyGenerator:
       self.Indent0(f"{output_unpack_str}, = {arg_str},"),
     ]
 
+
+  def get_stmts_pd_op_if(
+    self,
+    local_output_tensor_names,
+    op,
+    cond,
+    **kwargs,
+  ):
+    _, *true_branch_free_vars = kwargs["blocks"][0][0]
+    _, *false_branch_free_vars = kwargs["blocks"][1][0]
+    true_branch_input_names = ", ".join(
+      local_tensor.name
+      for t in true_branch_free_vars
+      for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+    )
+    false_branch_input_names = ", ".join(
+      local_tensor.name
+      for t in false_branch_free_vars
+      for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+    )
+    ret = ", ".join(local_output_tensor_names)
+    true_block_name = BlockNameGenerator().Generate(op, region_idx=0, block_idx=0)
+    false_block_name = BlockNameGenerator().Generate(op, region_idx=1, block_idx=0)
+    return [
+      self.Indent0(f"if {cond.name}:"),
+      self.Indent1(f"{ret}, = self.{true_block_name}({true_branch_input_names})"),
+      self.Indent0(f"else:"),
+      self.Indent1(f"{ret}, = self.{false_block_name}({false_branch_input_names})"),
+    ]
+
   def Indent0(self, pycode):
     return IndentedPyCode(pycode=pycode, num_tabs=0)
 

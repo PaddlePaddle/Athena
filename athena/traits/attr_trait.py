@@ -59,7 +59,7 @@ class AttrTrait:
     return ir_attr.DataLayoutAttribute(name)
 
   def a_kernel(self, value=None):
-    return ir_attr.KernelAttributeAttribute(value)
+    return ir_attr.KernelAttribute(value)
 
   def a_group_info(self, value=None):
     return ir_attr.GroupInfoAttribute(value)

@@ -32,8 +32,12 @@ class Op:
   def GetArgNameAsInput(self):
     if self.name == 'pd_op.data':
       return self.attrs['name'].value
+    if self.name == 'pd_op.feed':
+      return self.attrs['name'].value
     if self.name == 'builtin.parameter':
       return self.attrs['parameter_name'].value
+    if self.name == 'builtin.constant':
+      return self.attrs['value'].value
     return None
   
   def GetResultTensorName(self, i):

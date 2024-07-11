@@ -27,6 +27,22 @@ class DenseTensorType:
     )
 
 @dataclass
+class SelectedRowsType:
+  pass
+
+@dataclass
+class DenseTensorArrayType:
+  pass
+
+@dataclass
+class SparseCooTensorType:
+  pass
+
+@dataclass
+class SparseCsrTensorType:
+  pass
+
+@dataclass
 class BFloat16Type:
   def GetShortStr(self):
     return "bf16"
