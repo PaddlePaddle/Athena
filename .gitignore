@@ -1,1 +1,11 @@
 *.pyc
+
+# System-generated temporary files
+.DS_Store
+
+# Temporary files that may be generated when loading Paddle2ONNX using an IDE
+.idea
+.vscode
+
+dist/*
+*.egg-info/*
