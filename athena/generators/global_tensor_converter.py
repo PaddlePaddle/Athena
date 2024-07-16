@@ -1,12 +1,21 @@
 from athena.ir.ir_tensor import Tensor
+import os
 
 class GlobalTensorConverter:
 
   def __init__(self):
     self.local_name_prefix2seq_no = {}
     self.global_name2local_tensor = {}
+    self.enable_local_tensor = os.getenv('ATHENA_ENABLE_LOCAL_TENSOR') not in {
+      '0',
+      'False',
+      'false',
+      'OFF',
+    }
 
   def ConvertToLocalTensor(self, tensor, prefix = None):
+    if not self.enable_local_tensor:
+      return tensor
     if tensor is None:
       return None
     if tensor.name not in self.global_name2local_tensor:

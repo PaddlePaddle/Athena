@@ -99,6 +99,11 @@ def IsCinnStageEnableDiff():
     return enabled
 
 def GetExitCodeAndStdErr(cmd, env):
+    env = {
+        k:v
+        for k, v in env.items()
+        if v is not None
+    }
     import subprocess
     result = subprocess.run(
         cmd,
@@ -242,7 +247,7 @@ class BlockEntries:
 {%- elif big_dtype == "bool" -%}
     paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
 {%- elif big_dtype == "int64" -%}
-    paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='{{dtype}}')
+    paddle.cast(paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='int64'), '{{dtype}}')
 {%- elif big_dtype == "float64" -%}
     paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
 {%- endif -%}
@@ -412,7 +417,7 @@ class Test_{{block.block_name}}(CinnTestBase, unittest.TestCase):
                 return
             if try_run_exit_code < 0:
                 # program paniced.
-                raise RuntimeError(f"file {__file__} panicked. stderr: \n{try_run_stderr}")
+                raise RuntimeError(f"panicked. stderr: \n{try_run_stderr}")
         self._test_entry()
 
 {%- endif %}

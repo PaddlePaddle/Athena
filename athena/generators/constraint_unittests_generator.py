@@ -125,7 +125,7 @@ class ConstraintUnittestsGenerator:
       for input_spec_mode in self.input_spec_modes
       for program_id, op in uid_and_ops
       if self.op_example_inputs_meta_getter.HasAllInputs(
-        program_id, op.op_id, num_inputs=len(op.input_types)
+        program_id, op
       )
       if all(
         isinstance(input_type, valid_operand_types)

@@ -19,6 +19,7 @@ BlockDescriptor = namedtuple('BlockDescriptor', [
   'stmts',
   'output_arg_names',
   'input_spec_shape_dtypes',
+  'get_unused_vars',
 ])
 
 ProgramBlocksDescriptor = namedtuple('ProgramDescriptor', [
@@ -98,6 +99,7 @@ class ProgramBlocksDescriptorGenerator:
         stmts=stmts,
         output_arg_names=[tensor.name for tensor in output_local_tensors],
         input_spec_shape_dtypes=input_spec_shape_dtypes,
+        get_unused_vars=self.MakeGetterUnusedVars(stmts),
       )
     blocks = [
       MakeBlockDescriptor(block)
@@ -107,6 +109,15 @@ class ProgramBlocksDescriptorGenerator:
       program_id=self.program_id,
       blocks=blocks
     )
+
+  def MakeGetterUnusedVars(self, stmts):
+    def GetUsedTensor(stmt_idx):
+      return stmts[stmt_idx].tensors_used_by_me_and_downstream
+    def func(stmt_idx):
+      if stmt_idx + 1 >= len(stmts):
+        return []  
+      return list(set(GetUsedTensor(stmt_idx)) - set(GetUsedTensor(stmt_idx + 1)))
+    return func
 
 class OpExampleInputMetaScriptGenerator:
 

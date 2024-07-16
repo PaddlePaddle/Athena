@@ -83,7 +83,7 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
       (program_id, op)
       for program_id, op in uid_and_ops
       if op_example_inputs_meta_getter.HasAllInputs(
-        program_id, op.op_id, num_inputs=len(op.input_types)
+        program_id, op
       )
       if all(
         isinstance(input_type, valid_operand_types)

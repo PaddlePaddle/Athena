@@ -8,6 +8,7 @@ import unittest
 import numpy as np
 from dataclasses import dataclass
 import typing as t
+import itertools
 
 @dataclass
 class Stage:
@@ -99,6 +100,11 @@ def IsCinnStageEnableDiff():
     return enabled
 
 def GetExitCodeAndStdErr(cmd, env):
+    env = {
+        k:v
+        for k, v in env.items()
+        if v is not None
+    }
     import subprocess
     result = subprocess.run(
         cmd,
@@ -328,7 +334,7 @@ class CinnTestBase:
 {%- elif big_dtype == "bool" -%}
     paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
 {%- elif big_dtype == "int64" -%}
-    paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='{{dtype}}')
+    paddle.cast(paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='int64'), '{{dtype}}')
 {%- elif big_dtype == "float64" -%}
     paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
 {%- endif -%}
@@ -405,6 +411,7 @@ TestPrimitiveOp_{{get_sha_hash_prefix(get_test_class_methods(op))}}
 
 need_skip, skip_message = GetNeedSkipAndSkipMessage()
 try_run_exit_code, try_run_stderr = GetCurrentStageTryRunExitCodeAndStdErr()
+counter = itertools.count()
 
 {%- for op in ops %}
 {%- if not is_cached_before(get_primitive_class_name(op)) %}
@@ -413,6 +420,9 @@ class {{get_primitive_class_name(op)}}(InstanceTrait, paddle.nn.Layer):
 {{cache(get_primitive_class_name(op))}}
 {%- endif -%}
 
+
+{%- if not is_cached_before(get_test_class_methods(op)) %}
+{%- if not is_test_case_full() %}
 @unittest.skipIf(need_skip, skip_message)
 class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
     {{get_test_class_methods(op)}}
@@ -424,8 +434,16 @@ class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
                 return
             if try_run_exit_code < 0:
                 # program panicked.
-                raise RuntimeError(f"file {__file__} panicked. stderr: \n{try_run_stderr}")
+                if next(counter) == 0:
+                    panic_stderr = f"stderr: \n{try_run_stderr}"
+                else:
+                    panic_stderr = "panic stderr have been reported by the first test case."
+                raise RuntimeError(f"panicked. {panic_stderr}")
         return self._test_entry()
+{{inc_num_test_cases()}}
+{%- endif -%}
+{{cache(get_test_class_methods(op))}}
+{%- endif -%}
 
 {% endfor %}
 

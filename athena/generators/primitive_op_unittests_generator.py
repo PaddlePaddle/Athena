@@ -17,6 +17,7 @@ from jinja2 import Template
 import hashlib
 from athena.generators.paddle_c_ops_arg_names import op_name2args
 import typing as t
+import random
 
 InputSpecDesc = namedtuple("InputSpecDesc", [
   "shape",
@@ -91,15 +92,17 @@ class PrimitiveOpUnittestsGenerator:
 
   def __init__(self, input_spec_mode, op_example_inputs_meta_getter):
     self.input_spec_modes = [input_spec_mode] if input_spec_mode != "all" else [
+      "pure_dynamic",
       "original",
       # "pure_static",
-      "pure_dynamic",
     ]
     self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
     self.graph_input_tensor_name_prefix = "arg"
     self.paddle_op_call_generator = PaddleOpCallGenerator()
 
   def Generate(self, uid_and_ops):
+    if len(uid_and_ops) > self.GetLimitNumUnittestsPerOp():
+      random.shuffle(uid_and_ops)
     valid_operand_types = (ir_type.DenseTensorType, ir_type.NullType, ir_type.VectorType)
     ops = [
       PrimitiveOpStmt(
@@ -129,7 +132,7 @@ class PrimitiveOpUnittestsGenerator:
       for input_spec_mode in self.input_spec_modes
       for program_id, op in uid_and_ops
       if self.op_example_inputs_meta_getter.HasAllInputs(
-        program_id, op.op_id, num_inputs=len(op.input_types)
+        program_id, op
       )
       if all(
         isinstance(input_type, valid_operand_types)
@@ -141,6 +144,10 @@ class PrimitiveOpUnittestsGenerator:
       )
     ]
     return self._RenderTemplate(ops)
+
+  def GetLimitNumUnittestsPerOp(self):
+    limit = os.getenv('ATHENA_LIMIT_NUM_UNITTESTS_PER_OP')
+    return 1024 if limit is None else int(limit)
 
   def MakeImmediateValue4OperandId(self, op):
     def ImmediateValue4OperandId(operand_id, data):
@@ -205,11 +212,15 @@ class PrimitiveOpUnittestsGenerator:
     return immediate_value is not None
 
   def MakeExampleInputData4OperandId(self, program_id, op):
-    return lambda operand_id: self.GetExampleTensorMeta(
-      program_id=program_id,
-      op=op,
-      input_idx=operand_id.operand_idx,
-    ).data
+    def Get(operand_id):
+      if isinstance(op.input_types[operand_id.operand_idx], ir_type.NullType):
+        return None
+      return self.GetExampleTensorMeta(
+        program_id=program_id,
+        op=op,
+        input_idx=operand_id.operand_idx,
+      ).data
+    return Get
 
   def MakeInputSpecShapeAndDtype4TensorId(self, input_spec_mode, program_id, op):
     return lambda tensor_id: self.InputSpecShapeAndDtype4TensorId(
@@ -415,10 +426,18 @@ class PrimitiveOpUnittestsGenerator:
         "false",
         "OFF",
     }
+    num_test_cases = 0
+    def IncreaseNumTestCases():
+      nonlocal num_test_cases
+      num_test_cases += 1
+      return ""
+    limit_test_cases = self.GetLimitNumUnittestsPerOp()
     return template.render(
       ops=ops,
       get_sha_hash_prefix=lambda x: GetSha256sum(x)[0:32],
       is_cached_before=lambda x: x in cached_test_class_names,
+      is_test_case_full=lambda: num_test_cases >= limit_test_cases,
+      inc_num_test_cases=IncreaseNumTestCases,
       cache=lambda x: empty_str(cached_test_class_names.add(x)),
       PADDLE_DEBUG_ENABLE_CINN=PADDLE_DEBUG_ENABLE_CINN,
     )

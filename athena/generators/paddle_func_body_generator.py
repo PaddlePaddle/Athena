@@ -110,8 +110,16 @@ class PaddleFuncBodyGenerator:
     block_args_str = ", ".join(t.name for t in [*free_vars, *args])
     arg_str = ", ".join(t.name for t in args)
     return [
+      self.Indent0(f"import os"),
+      self.Indent0(f"ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"),
+      self.Indent0(f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is not None else int(ATHENA_WHILE_LOOP_LIMIT))"),
+      self.Indent0(f"while_loop_counter_{op.op_id} = 0"),
       self.Indent0(f"while {cond.name}:"),
       self.Indent1(f"{input_var_str}, = self.{block_name}({block_args_str})"),
+      self.Indent1(f"while_loop_counter_{op.op_id} += 1"),
+      self.Indent1(f"if while_loop_counter_{op.op_id} > kWhileLoopLimit:"),
+      self.Indent2(f"break"),
+      self.Indent1(f""),
       self.Indent0(f"{output_unpack_str}, = {arg_str},"),
     ]
 
@@ -150,6 +158,9 @@ class PaddleFuncBodyGenerator:
 
   def Indent1(self, pycode):
     return IndentedPyCode(pycode=pycode, num_tabs=1)
+
+  def Indent2(self, pycode):
+    return IndentedPyCode(pycode=pycode, num_tabs=2)
 
   def CollectPyCodeStmt(self, GetStmtPyCode, op, *input_tensors, **kwargs):
     outputs_type_strs = [t.GetShortStr() for t in op.output_types]

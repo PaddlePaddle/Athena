@@ -12,6 +12,8 @@ flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
 flags.DEFINE_string("output_dir", "", "output directory.")
 flags.DEFINE_enum("input_spec_mode", "all", ["all", "original", "pure_static", "pure_dynamic"], "generate dynamic shape unittests if input_spec_mode is pure_dynamic")
 flags.DEFINE_string("tmp_dir", "", "temp directory.")
+flags.DEFINE_integer("bucket_size", 128, "bucket size.")
+flags.DEFINE_integer("while_loop_limit", 128, "while loop limit")
 
 
 def main(argv):
@@ -37,8 +39,10 @@ def Main(tmp_dir):
     os.remove(file)
   for file in glob.glob(f"{FLAGS.output_dir}/test_{FLAGS.input_spec_mode}_*.py"):
     os.remove(file)
-  System(f"{sys.executable} -m athena.op_example_input_meta_script --output_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir}")
-  System(f"{sys.executable} -m athena.op_example_input_meta_result --input_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir}")
+  enable_local_tensor = os.getenv('ATHENA_ENABLE_LOCAL_TENSOR')
+  enable_local_tensor = False if enable_local_tensor is None else enable_local_tensor
+  System(f"ATHENA_ENABLE_LOCAL_TENSOR={enable_local_tensor} {sys.executable} -m athena.op_example_input_meta_script --output_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir} --bucket_size={FLAGS.bucket_size}")
+  System(f"{sys.executable} -m athena.op_example_input_meta_result --input_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir} --tmp_dir={tmp_dir} --while_loop_limit={FLAGS.while_loop_limit}")
   System(f"{sys.executable} -m athena._primitive_op_unittests --input_spec_mode={FLAGS.input_spec_mode} --input_dir={tmp_dir} --output_dir={FLAGS.output_dir}")
   sys.exit(exit_code)
 

@@ -8,16 +8,16 @@ class AttributeToStringConverter:
     return str(attr.value)
 
   def Complex64Attribute(attr):
-    return f"complex({attr.real}, {attr.imag})"
+    return f"complex(float('{attr.real}'), float('{attr.imag}'))"
 
   def Complex128Attribute(attr):
-    return f"complex({attr.real}, {attr.imag})"
+    return f"complex(float('{attr.real}'), float('{attr.imag}'))"
 
   def Float32Attribute(attr):
-    return attr.value
+    return f"float('{attr.value}')"
 
   def Float64Attribute(attr):
-    return attr.value
+    return f"float('{attr.value}')"
 
   def Int32Attribute(attr):
     return str(attr.value)

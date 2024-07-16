@@ -102,11 +102,47 @@ class GSOutputDimGenerator:
       tag, symbol_name, tensor_idx, dim_idx = binding.value
       yield tag.value, symbol_name.value, tensor_idx.value, dim_idx.value
 
+class CinnOpCallGenerator:
 
-class PaddleOpCallGenerator:
+  def cinn_op_yield_store(self, op, x):
+    return f"{x.name},"
+
+  def cinn_op_concat(self, op, *inputs):
+    operands = ", ".join([input.name for input in inputs])
+    return f"{self.m}.concat([{operands}], axis={op.attrs['axis']})"
+
+  def cinn_op_slice(self, op, x):
+    return f"{self.m}.slice({x.name}, axes={op.attrs['axes']}, starts={op.attrs['starts']}, ends={op.attrs['ends']})"
+
+  def cinn_op_reduce_sum(self, op, x):
+    return f"{self.m}.sum({x.name}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
+
+  def cinn_op_reduce_prod(self, op, x):
+    return f"{self.m}.prod({x.name}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
+
+  def cinn_op_generate_shape(self, op, *inputs):
+    generator = GSOutputDimGenerator(
+      self.m, inputs,
+      symbol_bindings=op.base_op.attrs['symbol_bindings'],
+    )
+    output_dims = ", ".join([
+      generator.Generate(dim_expr)
+      for dim_expr in op.base_op.attrs['output_dim_exprs'].value
+    ])
+    input_args = ", ".join([input.name for input in inputs])
+    return f"[{output_dims}] # inputs: {input_args}"
+
+
+class PaddleOpCallGenerator(CinnOpCallGenerator):
 
   def __init__(self, module_name="paddle"):
     self.m = module_name
+
+  def let(self, args_value_pair, body):
+    args, value = args_value_pair
+    if isinstance(args, (list, tuple)):
+      args = ', '.join(args)
+    return f"(lambda x, f: f(x))({value}, lambda {args}: {body})"
 
   def GenerateOpCall(self, op, *inputs):
     method_name = op.GetPyVarName()
@@ -115,27 +151,31 @@ class PaddleOpCallGenerator:
     return self._GenerateOpCall(op, *inputs)
 
   def _GenerateOpCall(self, op, *inputs):
-    c_ops_arg_names = GetCOpsArgNames(self.PaddleMethodName(op))
-    def ValidCOpsCall():
-      if op.GetValidPyVarNameComponents()[0] != "pd_op":
-        return False
+    assert op.GetValidPyVarNameComponents()[0] == "pd_op"
+    def GetCOpsArgNamesThenCheck(op_name, attrs):
+      c_ops_arg_names = GetCOpsArgNames(op_name)
       if c_ops_arg_names is None:
-        return False
+        return None
       attr_names = [
         attr_name
         for attr_name in c_ops_arg_names
-        if attr_name in op.attrs
+        if attr_name in attrs
       ]
       assert len(inputs) + len(attr_names) == len(c_ops_arg_names), f"op: {op.name}, len(inputs): {len(inputs)}, attr_names: {attr_names}, c_ops_arg_names: {c_ops_arg_names}"
-      return True
-    if ValidCOpsCall():
-      return self.GenerateCOpsCall(
-        op_name=self.PaddleMethodName(op),
-        inputs=inputs,
-        attrs=op.attrs,
-      )
-    assert op.GetValidPyVarNameComponents()[0] == "pd_op", f"op.name: {op.name}"
-    return self.GenerateDefaultOpCall(self.m, op, *inputs)
+      return c_ops_arg_names
+    op_name = self.PaddleMethodName(op)
+    c_ops_arg_names = GetCOpsArgNamesThenCheck(op_name, op.attrs)
+    if c_ops_arg_names is None and op_name[-1] == '_':
+      op_name = op_name[0:-1]
+      c_ops_arg_names = GetCOpsArgNamesThenCheck(op_name, op.attrs)
+    assert c_ops_arg_names is not None, (
+      f"op: {op.name}, c_ops_arg_names: {c_ops_arg_names}, op: {op}"
+    )
+    return self.GenerateCOpsCall(
+      op,
+      inputs=inputs,
+      op_name=op_name,
+    )
 
   def PaddleMethodName(self, op):
     return op.GetValidPyVarNameComponents()[-1]
@@ -152,23 +192,17 @@ class PaddleOpCallGenerator:
         continue
       yield attr_name, attr_value
 
-  def GenerateDefaultOpCall(self, m, op, *inputs):
-    input_names = ", ".join([t.name if t is not None else "None" for t in inputs])
-    attr_str = ", ".join([
-      f"{attr_name}={attr_value}"
-      for attr_name, attr_value in self.GetOpAttrs(op)
-    ])
-    if len(attr_str) > 0:
-      attr_str = ", " + attr_str
-    return f"{m}.{self.PaddleMethodName(op)}({input_names}{attr_str})"
-
-  def GenerateCOpsCall(self, op_name, inputs, attrs):
+  def GenerateCOpsCall(self, op, inputs, op_name=None):
+    attrs = op.attrs
+    op_name = op_name if op_name is not None else self.PaddleMethodName(op)
     arg_names = GetCOpsArgNames(op_name)
     pos_arg_idx = -1
     def GetPosArgVarName():
       nonlocal pos_arg_idx
       pos_arg_idx += 1
       t = inputs[pos_arg_idx]
+      if isinstance(t, str):
+        return t
       if t is None:
         return "None"
       if isinstance(t.type, ir_type.NullType):
@@ -180,33 +214,32 @@ class PaddleOpCallGenerator:
       for arg_name in arg_names
     ]
     args_str = ", ".join(args)
-    return f"{m}.{op_name}({args_str})"
 
-  def pd_op_dropout(self, op, *inputs):
-    op_call_str = self._GenerateOpCall(op, *inputs)
-    return f"{op_call_str}, None"
-
-  def pd_op_layer_norm(self, op, *inputs):
-    op_call_str = self._GenerateOpCall(op, *inputs)
-    return f"{op_call_str}, None, None"
-
-  def pd_op_huber_loss(self, op, *inputs):
-    op_call_str = self._GenerateOpCall(op, *inputs)
-    return f"{op_call_str}, None"
+    out = f"{m}.{op_name}({args_str})"
+    if len(op.output_types) <= 1:
+      return out
+    nones = ",".join("None" for i in range(len(op.output_types) - 1))
+    return self.let(
+      ('out', out),
+      f"out if isinstance(out, (list, tuple)) else (out, {nones})"
+    )
+    
+  def pd_op_arange(self, op, start, end, stop):
+    dtype = op.attrs['dtype'].split('.')[-1]
+    return f"{self.m}.arange({start.name}, {end.name}, {stop.name}, dtype='{dtype}')"
 
   def pd_op_one_hot(self, op, x, num_classes):
-    return f"{self.m}._C_ops.one_hot({x.name} % {num_classes.name}, {num_classes.name})"
-
-  def pd_op_squeeze(self, op, *inputs):
-    op_call_str = self._GenerateOpCall(op, *inputs)
-    return f"{op_call_str}, None"
-
-  def pd_op_flatten(self, op, *inputs):
-    op_call_str = self._GenerateOpCall(op, *inputs)
-    return f"{op_call_str}, None"
+    N = f"{self.m}.cast({num_classes.name}, {x.name}.dtype)"
+    return f"{self.m}._C_ops.one_hot({x.name} % {N}, {num_classes.name})"
 
   def pd_op_assign(self, op, x):
     return x.name
+
+  def pd_op_assign_value(self, op):
+    shape = op.attrs['shape']
+    values = op.attrs['values']
+    dtype = op.attrs['dtype']
+    return f"{self.m}.to_tensor({values}, dtype={dtype}).reshape({shape})"
 
   def pd_op_sigmoid(self, op, x):
     return f"{self.m}.nn.functional.sigmoid({x.name})"
@@ -223,8 +256,10 @@ class PaddleOpCallGenerator:
   def pd_op_rsqrt(self, op, x):
     return f"{self.m}.rsqrt({x.name})"
 
-  def pd_op_expand(self, op, x, shape):
-    return f"{self.m}.expand({x.name}, {shape.name})"
+  def pd_op_shape(self, op, input):
+    if isinstance(input.dtype, ir_type.Float16Type):
+      input = f"{self.m}.cast({input.name}, 'float32')"
+    return self.GenerateCOpsCall(op, [input])
 
   def cf_yield(self, op, *inputs):
     return None
@@ -264,33 +299,11 @@ class PaddleOpCallGenerator:
   def pd_op_share_data_(self, op, x):
     return f"{x.name}.detach()"
 
-  def pd_op_split(self, op, x, y, z):
-    return f"{self.m}.split({x.name}, {y.name}, {z.name})"
-
   def pd_op_full_int_array(self, op):
     return op.attrs['value']
 
-  def cinn_op_yield_store(self, op, x):
-    return f"{x.name},"
-
-  def cinn_op_concat(self, op, *inputs):
-    operands = ", ".join([input.name for input in inputs])
-    return f"{self.m}.concat([{operands}], axis={op.attrs['axis']})"
-
-  def cinn_op_slice(self, op, x):
-    return f"{self.m}.slice({x.name}, axes={op.attrs['axes']}, starts={op.attrs['starts']}, ends={op.attrs['ends']})"
-
-  def cinn_op_reduce_sum(self, op, x):
-    return f"{self.m}.sum({x.name}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
-
-  def cinn_op_reduce_prod(self, op, x):
-    return f"{self.m}.prod({x.name}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
-
   def pd_op_sqrt(self, op, x):
     return f"{self.m}.sqrt({x.name})"
-
-  def pd_op_transpose(self, op, x):
-    return f"{self.m}.transpose({x.name}, perm={op.attrs['perm']})"
 
   def pd_op_add(self, op, x, y):
     return f"{x.name} + {y.name}"
@@ -322,12 +335,6 @@ class PaddleOpCallGenerator:
   def cinn_op_reshape(self, op, x):
     return f"{self.m}.reshape({x.name}, {op.attrs['shape']})"
 
-  def pd_op_reshape(self, op, x, shape):
-    return f"{self.m}.reshape({x.name}, {shape.name}), None"
-
-  def pd_op_unsqueeze(self, op, x, axis):
-    return f"{self.m}.unsqueeze({x.name}, {axis.name}), None"
-
   def pd_op_sin(self, op, x):
     return f"{self.m}.sin({x.name})"
 
@@ -337,14 +344,22 @@ class PaddleOpCallGenerator:
   def pd_op_cos(self, op, x):
     return f"{self.m}.cos({x.name})"
 
-  def cinn_op_generate_shape(self, op, *inputs):
-    generator = GSOutputDimGenerator(
-      self.m, inputs,
-      symbol_bindings=op.base_op.attrs['symbol_bindings'],
+  def pd_op_batch_norm_(self, op, *inputs):
+    return self.GenerateCOpsCall(op, inputs, op_name='batch_norm')
+
+  def pd_op_clip(self, op, x, a, b):
+    return self.GenerateCOpsCall(
+      op,
+      [x, f"min({a.name}, {b.name})", f"max({a.name}, {b.name})"],
+      op_name='clip'
     )
-    output_dims = ", ".join([
-      generator.Generate(dim_expr)
-      for dim_expr in op.base_op.attrs['output_dim_exprs'].value
-    ])
-    input_args = ", ".join([input.name for input in inputs])
-    return f"[{output_dims}] # inputs: {input_args}"
+
+  def pd_op_clip_(self, *args):
+    return self.pd_op_clip(*args)
+
+  def pd_op_rnn_(self, op, *inputs):
+    outs = self.GenerateCOpsCall(op, inputs, op_name='rnn')
+    return f"{outs} + (None,)"
+
+  def pd_op_select_input(self, op, cond, *inputs):
+    return f"[{', '.join(x.name for x in inputs)}][int({cond.name})]"
