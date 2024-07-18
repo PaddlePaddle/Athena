@@ -350,7 +350,7 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
   def pd_op_clip(self, op, x, a, b):
     return self.GenerateCOpsCall(
       op,
-      [x, f"min({a.name}, {b.name})", f"max({a.name}, {b.name})"],
+      [x, f"paddle.minimum({a.name}, {b.name})", f"paddle.maximum({a.name}, {b.name})"],
       op_name='clip'
     )
 

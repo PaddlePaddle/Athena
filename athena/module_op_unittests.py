@@ -13,14 +13,21 @@ from absl import flags
 import hashlib
 import glob as glob
 import os
+from athena.util.primitive_op_extractor import PrimitiveOpExtractor
+import athena.ir.ir_type as ir_type
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("ir_programs", "", "ir programs file.")
 flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
+flags.DEFINE_boolean("enable_early_return", False, "enable early return.")
+flags.DEFINE_boolean("enable_local_tensor", True, "enable local tensor name.")
+
 
 def main(argv):
+  os.environ['ATHENA_ENABLE_LOCAL_TENSOR'] = str(FLAGS.enable_local_tensor)
+  os.environ['ATHENA_ENABLE_EARLY_RETURN'] = str(FLAGS.enable_early_return)
   original_programs_file = FLAGS.ir_programs
   example_inputs_file = FLAGS.example_inputs
   for file in glob.glob(f"{FLAGS.output_dir}/test_module_op_*.py"):
@@ -55,17 +62,34 @@ def IsBackwardProgram(ir_program):
     if len(keyword_arg_names) > 0:
       return True
   return False
+  
 
 def GetOutputUnittests(original_programs_file, example_inputs_file):
   example_inputs_meta_getter = MakeExampleInputsMetaGetter(example_inputs_file)
-  for cls in GetProgramClasses(original_programs_file):
-    ir_program = cls()
-    if IsBackwardProgram(ir_program):
-      # Ignore backward programs
-      continue
-    generator = ModuleOpUnittestGenerator(ir_program, example_inputs_meta_getter)
-    name, unittest = generator.Generate()
-    yield name, unittest
+  def MakeUnittestGenerator(ir_program):
+    return ModuleOpUnittestGenerator(ir_program, example_inputs_meta_getter)
+  yield from (
+    (name, unittest)
+    for cls in GetProgramClasses(original_programs_file)
+    for ir_program in [cls()]
+    if not IsBackwardProgram(ir_program)
+    if AllInputOutputTypesSupported(ir_program)
+    for generator in [MakeUnittestGenerator(ir_program)]
+    for name, unittest in [generator.Generate()]
+  )
+
+def AllInputOutputTypesSupported(ir_program):
+  supported_operand_types = (
+    ir_type.DenseTensorType,
+    ir_type.NullType,
+    ir_type.VectorType
+  )
+  primitive_op_extractor = PrimitiveOpExtractor()
+  return all(
+    isinstance(in_out_type, supported_operand_types)
+    for op in primitive_op_extractor.Extract(ir_program)
+    for in_out_type in op.input_types + op.output_types
+  )
 
 def MakeExampleInputsMetaGetter(example_inputs_file):
   classes = [

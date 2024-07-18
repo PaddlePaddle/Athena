@@ -8,7 +8,6 @@ import unittest
 import numpy as np
 from dataclasses import dataclass
 import typing as t
-import itertools
 
 @dataclass
 class Stage:
@@ -144,7 +143,7 @@ def GetNeedSkipAndSkipMessage():
         return False, ""
     exitcode, stderr = GetStageExitCodeAndStdErr(last_stage)
     if exitcode != 0:
-        return True, "last stage failed."
+        return True, f"last stage failed."
     return False, ""
 
 def GetCurrentStageTryRunExitCodeAndStdErr():
@@ -171,6 +170,23 @@ SetDefaultEnv(
     FLAGS_enable_fusion_fallback=False,
 )
 
+need_skip, skip_message = GetNeedSkipAndSkipMessage()
+try_run_exit_code, try_run_stderr = GetCurrentStageTryRunExitCodeAndStdErr()
+class TestTryRun(unittest.TestCase):
+    def test_panic(self):
+        if not AthenaTryRunEnabled():
+            return
+        if try_run_exit_code == 0:
+            # All unittest cases passed.
+            return
+        if try_run_exit_code > 0:
+            # program failed but not panic.
+            return
+        # program panicked.
+        kOutputLimit = 65536
+        message = try_run_stderr[-kOutputLimit:]
+        raise RuntimeError(f"panicked. last {kOutputLimit} characters of stderr: \n{message}")
+
 import paddle
 
 def SetEnvVar(env_var2value):
@@ -185,6 +201,72 @@ def SetEnvVar(env_var2value):
 if GetCurrentCinnStage() is not None:
     SetEnvVar(GetCurrentCinnStage().env_vars)
 
+def NumOperationsInBlock(block_idx):
+    return [{{blocks | map(attribute='stmts') | map('length') | join(", ") }}][block_idx] - 1 # number-of-ops-in-block
+
+def GetPaddleDebugNumAllowedOps():
+    try:
+        return int(os.getenv('PADDLE_DEBUG_NUM_ALLOWED_OPS'))
+    except:
+        return None
+
+paddle_debug_num_allowed_ops = GetPaddleDebugNumAllowedOps()
+
+
+if type(paddle_debug_num_allowed_ops) is not int:
+    def EarlyReturn(block_idx, op_idx):
+        return False      
+else:
+    def EarlyReturn(block_idx, op_idx):
+        return op_idx >= paddle_debug_num_allowed_ops
+
+class BlockEntries:
+
+{%- for block in blocks %}
+{%- set block_idx = loop.index0 %}
+    def {{block.block_name}}(self, {{block.input_arg_names | join(", ")}}):
+    {%- for stmt in block.stmts %}
+        {%- if (stmt.pycode | length) > 0%}
+
+        # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+        {%- endif %}
+        {%- for pycode in stmt.pycode %}
+        {%- if pycode.num_tabs == 0 %}
+        {{pycode.pycode}}
+        {%- elif pycode.num_tabs == 1 %}
+            {{pycode.pycode}}
+        {%- elif pycode.num_tabs == 2 %}
+                {{pycode.pycode}}
+        {%- else %}
+        raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
+        {%- endif %}
+        {%- endfor %}
+    {%- endfor %}
+        return {{block.output_arg_names | join(", ")}}
+{%- endfor %}
+
+{% macro get_input_tensor_instance(block, block_idx, input_idx) -%}
+{%- set shape = block.input_tensor_descs[input_idx].shape -%}
+{%- set dtype = block.input_tensor_descs[input_idx].dtype -%}
+{%- set big_dtype = block.input_tensor_descs[input_idx].big_dtype -%}
+{%- set data = block.input_tensor_descs[input_idx].data -%}
+{%- set min = block.input_tensor_descs[input_idx].min -%}
+{%- set max = block.input_tensor_descs[input_idx].max -%}
+{%- if data != None -%}
+    {%- if data == [] and shape == [] -%}
+    paddle.to_tensor({{data}}, dtype='{{dtype}}')
+    {%- else -%}
+    paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
+    {%- endif -%}
+{%- elif big_dtype == "bool" -%}
+    paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
+{%- elif big_dtype == "int64" -%}
+    paddle.cast(paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='int64'), '{{dtype}}')
+{%- elif big_dtype == "float64" -%}
+    paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
+{%- endif -%}
+{%- endmacro %}
+
 def GetEnvVarEnableJit():
     enable_jit = os.getenv('PADDLE_DEBUG_ENABLE_JIT')
     return enable_jit not in {
@@ -196,8 +278,6 @@ def GetEnvVarEnableJit():
 
 def GetEnvVarEnableCinn():
     enable_cinn = os.getenv('PADDLE_DEBUG_ENABLE_CINN')
-    if enable_cinn is None:
-        return {{PADDLE_DEBUG_ENABLE_CINN}}
     return enable_cinn not in {
         "0",
         "False",
@@ -228,52 +308,15 @@ def GetFloat32Tolerance():
 def IsInteger(dtype):
     return np.dtype(dtype).char in np.typecodes['AllInteger']
 
-def ApplyToStatic(net, use_cinn):
-    build_strategy = paddle.static.BuildStrategy()
-    build_strategy.build_cinn_pass = use_cinn
-    return paddle.jit.to_static(
-        net,
-        input_spec=net.get_input_spec(),
-        build_strategy=build_strategy,
-        full_graph=True,
-    )
-
-class InstanceTrait:
-
-    @classmethod
-    def instance(cls):
-        if cls.instance_ is None:
-            cls.instance_ = cls()
-        return cls.instance_
-
-    @classmethod
-    def static_instance_with_cinn(cls):
-        if cls.static_instance_with_cinn_ is None:
-            cls.static_instance_with_cinn_ = ApplyToStatic(
-                cls.instance(),
-                use_cinn=True
-            )
-        return cls.static_instance_with_cinn_
-
-    @classmethod
-    def static_instance_without_cinn(cls):
-        if cls.static_instance_without_cinn_ is None:
-            cls.static_instance_without_cinn_ = ApplyToStatic(
-                cls.instance(),
-                use_cinn=False
-            )
-        return cls.static_instance_without_cinn_
-
 
 class CinnTestBase:
-
     def setUp(self):
         paddle.seed(2024)
         self.prepare_data()
 
     def _test_entry(self):
-        dy_outs = self.train(use_cinn=False)
-        cinn_outs = self.train(use_cinn=GetEnvVarEnableCinn())
+        dy_outs = self.entry(use_cinn=False)
+        cinn_outs = self.entry(use_cinn=GetEnvVarEnableCinn())
 
         for cinn_out, dy_out in zip(cinn_outs, dy_outs):
           if type(cinn_out) is list and type(dy_out) is list:
@@ -281,29 +324,6 @@ class CinnTestBase:
               self.assert_all_close(x, y)
           else:
             self.assert_all_close(cinn_out, dy_out)
-
-    def train(self, use_cinn):
-        if GetEnvVarEnableJit():
-            net = self.prepare_static_net(use_cinn)
-        else:
-            net = self.prepare_net()
-        paddle.seed(2024)
-        out = net(*self.inputs)
-        return out
-    
-    def prepare_data(self):
-        self.inputs = self.get_inputs()
-        for input in self.inputs:
-            input.stop_gradient = True
-
-    def prepare_net(self):
-        return self.get_test_class().instance()
-
-    def prepare_static_net(self, use_cinn):
-        if use_cinn:
-            return self.get_test_class().static_instance_with_cinn()
-        else:
-            return self.get_test_class().static_instance_without_cinn()
 
     def assert_all_close(self, x, y):
         if (hasattr(x, "numpy") and hasattr(y, "numpy")):
@@ -318,128 +338,108 @@ class CinnTestBase:
         else:
             assert x == y
 
-{% macro get_input_tensor_instance(tensor_meta) -%}
-{%- set shape = tensor_meta.shape -%}
-{%- set dtype = tensor_meta.dtype -%}
-{%- set big_dtype = tensor_meta.big_dtype -%}
-{%- set data = tensor_meta.data -%}
-{%- set min = tensor_meta.min -%}
-{%- set max = tensor_meta.max -%}
-{%- if data != None -%}
-    {%- if data == [] and shape == [] -%}
-    paddle.to_tensor({{data}}, dtype='{{dtype}}')
-    {%- else -%}
-    paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
-    {%- endif -%}
-{%- elif big_dtype == "bool" -%}
-    paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
-{%- elif big_dtype == "int64" -%}
-    paddle.cast(paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='int64'), '{{dtype}}')
-{%- elif big_dtype == "float64" -%}
-    paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
-{%- endif -%}
-{%- endmacro %}
+{%- for block in blocks %}
+{%- set block_idx = loop.index0 %}
+{%- if block.is_entry_block %}
 
-{% macro get_operand_value(op, operand_id) -%}
-{%- set data = op.example_input_data4operand_id(operand_id) -%}
-{%- set immediate_value = op.immediate_value4operand_id(operand_id, data) -%}
-{%- set null_tensor_id = op.null_tensor_id4operand_id(operand_id) -%}
-{%- set operand_tensor_id = op.operand_tensor_id4operand_id(operand_id) -%}
-{%- set tensor_list_member_ids = op.tensor_list_member_ids4operand_id(operand_id) -%}
-{%- if data != None and immediate_value != None -%}
-    {{immediate_value}}
-{%- elif null_tensor_id != None -%}
-    None
-{%- elif operand_tensor_id != None -%}
-    {{op.tensor_name4tensor_id(operand_tensor_id)}}
-{%- elif tensor_list_member_ids != None -%}
-    [{%- for member_tensor_id in tensor_list_member_ids -%}
-    {%- if loop.index0 > 0 -%}{{", "}}{%- endif -%}
-    {{op.tensor_name4tensor_id(member_tensor_id)}}
-    {%- endfor -%}]
-{%- endif -%}
-{%- endmacro %}
+{%- if enable_early_return %}
 
-{% macro get_primitive_class_methods(op) %}
+class Block_{{block.block_name}}(paddle.nn.Layer, BlockEntries):
     def __init__(self):
         super().__init__()
 
-    def forward(self{{", "}}
-        {%- for tensor_id in op.tensor_ids -%}
-        {%- if loop.index0 > 0 -%}{{", "}}{%- endif -%}
-        {{op.tensor_name4tensor_id(tensor_id)}}
-        {%- endfor -%}
-    ):
-        {%- for operand_id in op.operand_ids %}
-        {{op.tensor_name4operand_id(operand_id)}} = {{get_operand_value(op, operand_id)}}
-        {%- endfor %}
-        return {{ op.op_expr }}
+    def forward(self, {{ block.input_arg_names | join(", ") }}):
+        args = [{{block.stmts[0].op_func_in_out_names_signature.in_names | join(", ")}}]
+        for op_idx, op_func in enumerate(self.get_op_funcs()):
+            if EarlyReturn({{block_idx}}, op_idx):
+                return args
+            args = op_func(*args)
+        return args
 
-    def get_input_spec(self):
+    def get_op_funcs(self):
         return [
-        {%- for tensor_id in op.tensor_ids %}
-        {%- set shape, dtype = op.input_spec_shape_dtype4tensor_id(tensor_id) %}
+        {%- for stmt in block.stmts %}
+            self.{{stmt.op_unique_local_name}},
+        {%- endfor %}
+        ]
+
+    {%- for stmt in block.stmts %}
+    {%- set op_idx = loop.index0 %}
+
+    def {{stmt.op_unique_local_name}}(self, {{stmt.op_func_in_out_names_signature.in_names | join(", ")}}):
+    
+        # EarlyReturn({{block_idx}}, {{op_idx}})
+
+        # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+
+        {%- for pycode in stmt.pycode %}
+        {%- if pycode.num_tabs == 0 %}
+        {{pycode.pycode}}
+        {%- elif pycode.num_tabs == 1 %}
+            {{pycode.pycode}}
+        {%- elif pycode.num_tabs == 2 %}
+                {{pycode.pycode}}
+        {%- else %}
+        raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
+        {%- endif %}
+        {%- endfor %}
+
+        return [{{stmt.op_func_in_out_names_signature.out_names | join(", ")}}]
+    
+    {%- endfor %}
+
+{%- else %}
+
+class ModuleOp(paddle.nn.Layer, BlockEntries):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, {{ block.input_arg_names | join(", ") }}):
+        return self.{{block.block_name}}({{ block.input_arg_names | join(", ") }})
+
+{%- endif %}
+
+@unittest.skipIf(need_skip, skip_message)
+class Test_{{block.block_name}}(CinnTestBase, unittest.TestCase):
+    def prepare_data(self):
+        self.inputs = [
+        {%- for arg_name in block.input_arg_names %}
+        {%- set input_idx = loop.index0 %}
+            # {{arg_name}}
+            {{get_input_tensor_instance(block, block_idx, input_idx)}},
+        {%- endfor %}
+        ]
+        for input in self.inputs:
+            input.stop_gradient = True
+
+    def apply_to_static(self, net, use_cinn):
+        build_strategy = paddle.static.BuildStrategy()
+        input_spec = [
+        {%- for shape, dtype in block.input_spec_shape_dtypes %}
+        {%- set input_idx = loop.index0 %}
+            # {{block.input_arg_names[input_idx]}}
             paddle.static.InputSpec(shape={{shape}}, dtype='{{dtype}}'),
         {%- endfor %}
         ]
-        
-    instance_ = None
-    static_instance_with_cinn_ = None
-    static_instance_without_cinn_ = None
+        build_strategy.build_cinn_pass = use_cinn
+        return paddle.jit.to_static(
+            net,
+            input_spec=input_spec,
+            build_strategy=build_strategy,
+            full_graph=True,
+        )
 
-{% endmacro %}
-
-{%- macro get_primitive_class_name(op) -%}
-PrimitiveOp_{{get_sha_hash_prefix(get_primitive_class_methods(op))}}
-{%- endmacro -%}
-
-{% macro get_test_class_methods(op) %}
-    def get_test_class(self):
-        return {{get_primitive_class_name(op)}}
-    def get_inputs(self):
-        return [
-        {%- for tensor_id in op.tensor_ids %}
-        {%- set example_tensor_meta = op.example_input_meta4tensor_id(tensor_id) %}
-            {{get_input_tensor_instance(example_tensor_meta)}},
-        {%- endfor %}
-        ]
-{% endmacro %}
-
-{%- macro get_test_class_name(op) -%}
-TestPrimitiveOp_{{get_sha_hash_prefix(get_test_class_methods(op))}}
-{%- endmacro -%}
-
-need_skip, skip_message = GetNeedSkipAndSkipMessage()
-try_run_exit_code, try_run_stderr = GetCurrentStageTryRunExitCodeAndStdErr()
-class TestTryRun(unittest.TestCase):
-    def test_panic(self):
-        if not AthenaTryRunEnabled():
-            return
-        if try_run_exit_code == 0:
-            # All unittest cases passed.
-            return
-        if try_run_exit_code > 0:
-            # program failed but not panic.
-            return
-        # program panicked.
-        kOutputLimit = 65536
-        message = try_run_stderr[-kOutputLimit:]
-        raise RuntimeError(f"panicked. last {kOutputLimit} characters of stderr: \n{message}")
-
-
-{%- for op in ops %}
-{%- if not is_cached_before(get_primitive_class_name(op)) %}
-class {{get_primitive_class_name(op)}}(InstanceTrait, paddle.nn.Layer):
-    {{get_primitive_class_methods(op)}}
-{{cache(get_primitive_class_name(op))}}
-{%- endif -%}
-
-
-{%- if not is_cached_before(get_test_class_methods(op)) %}
-{%- if not is_test_case_full() %}
-@unittest.skipIf(need_skip, skip_message)
-class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
-    {{get_test_class_methods(op)}}
+    def entry(self, use_cinn):
+        {%- if enable_early_return %}
+        net = Block_{{block.block_name}}()
+        {%- else %}
+        net = ModuleOp()
+        {%- endif %}
+        if GetEnvVarEnableJit():
+            net = self.apply_to_static(net, use_cinn)
+        paddle.seed(2024)
+        out = net(*self.inputs)
+        return out
 
     def test_entry(self):
         if AthenaTryRunEnabled():
@@ -449,13 +449,10 @@ class {{get_test_class_name(op)}}(CinnTestBase, unittest.TestCase):
             if try_run_exit_code < 0:
                 # program panicked.
                 raise RuntimeError(f"panicked. panic stderr have been reported by the unittest `TestTryRun.test_panic`.")
-        return self._test_entry()
-{{inc_num_test_cases()}}
-{%- endif -%}
-{{cache(get_test_class_methods(op))}}
-{%- endif -%}
+        self._test_entry()
 
-{% endfor %}
+{%- endif %}
+{%- endfor %}
 
 if __name__ == '__main__':
     unittest.main()

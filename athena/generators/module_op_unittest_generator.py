@@ -102,8 +102,20 @@ class ModuleOpUnittestGenerator:
     return self.name, self._RenderTemplate(blocks=blocks)
 
   def _RenderTemplate(self, blocks):
-    template = self._GetTemplate("template_paddle_block_unittest.py")
-    return template.render(blocks=blocks)
+    template = self._GetTemplate("template_module_op_unittests.py")
+    return template.render(
+      blocks=blocks,
+      enable_early_return=self.EnableEarlyReturn(),
+    )
+  
+  def EnableEarlyReturn(self):
+    return os.getenv('ATHENA_ENABLE_EARLY_RETURN') not in {
+      '0',
+      'false',
+      'False',
+      'off',
+      'OFF',
+    }
 
   def _GetTemplate(self, template_name):
     dir_path = os.path.dirname(os.path.realpath(__file__))
