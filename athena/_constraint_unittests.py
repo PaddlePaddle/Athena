@@ -9,7 +9,6 @@ from athena.generators.constraint_unittests_generator import (
 from athena.util.ir_program_util import IsBackwardProgram, GetProgramId
 import athena.ir.ir_op as ir_op
 import athena.ir.ir_type as ir_type
-import sys
 from absl import app
 from absl import flags
 import hashlib
