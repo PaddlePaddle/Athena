@@ -2,6 +2,7 @@ import athena.ir.ir_attr as ir_attr
 import athena.ir.ir_type as ir_type
 from athena.generators.paddle_c_ops_arg_names import GetCOpsArgNames
 import sys
+import os
 
 class GSOutputDimGenerator:
 
@@ -165,17 +166,10 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
       return c_ops_arg_names
     op_name = self.PaddleMethodName(op)
     c_ops_arg_names = GetCOpsArgNamesThenCheck(op_name, op.attrs)
-    if c_ops_arg_names is None and op_name[-1] == '_':
-      op_name = op_name[0:-1]
-      c_ops_arg_names = GetCOpsArgNamesThenCheck(op_name, op.attrs)
     assert c_ops_arg_names is not None, (
       f"op: {op.name}, c_ops_arg_names: {c_ops_arg_names}, op: {op}"
     )
-    return self.GenerateCOpsCall(
-      op,
-      inputs=inputs,
-      op_name=op_name,
-    )
+    return self.GenerateCOpsCall(op, inputs=inputs)
 
   def PaddleMethodName(self, op):
     return op.GetValidPyVarNameComponents()[-1]
@@ -215,7 +209,14 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
     ]
     args_str = ", ".join(args)
 
-    out = f"{m}.{op_name}({args_str})"
+    def GetMethodName():
+      inplace = (op_name is not None) and (self.PaddleMethodName(op) == f"{op_name}_")
+      enable_fallback_from_inplace = self.EnableFallbackFromInplace()
+      if inplace and not enable_fallback_from_inplace:
+        return f"{op_name}_"
+      return op_name
+
+    out = f"{m}.{GetMethodName()}({args_str})"
     if len(op.output_types) <= 1:
       return out
     nones = ",".join("None" for i in range(len(op.output_types) - 1))
@@ -223,6 +224,15 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
       ('out', out),
       f"out if isinstance(out, (list, tuple)) else (out, {nones})"
     )
+
+  def EnableFallbackFromInplace(self):
+    return os.getenv('ATHENA_ENABLE_FALLBACK_FROM_INPLACE') not in {
+      '0',
+      'False',
+      'false',
+      'OFF',
+      'off'
+    }
     
   def pd_op_arange(self, op, start, end, stop):
     dtype = op.attrs['dtype'].split('.')[-1]
@@ -346,16 +356,6 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
 
   def pd_op_batch_norm_(self, op, *inputs):
     return self.GenerateCOpsCall(op, inputs, op_name='batch_norm')
-
-  def pd_op_clip(self, op, x, a, b):
-    return self.GenerateCOpsCall(
-      op,
-      [x, f"paddle.minimum({a.name}, {b.name})", f"paddle.maximum({a.name}, {b.name})"],
-      op_name='clip'
-    )
-
-  def pd_op_clip_(self, *args):
-    return self.pd_op_clip(*args)
 
   def pd_op_rnn_(self, op, *inputs):
     outs = self.GenerateCOpsCall(op, inputs, op_name='rnn')

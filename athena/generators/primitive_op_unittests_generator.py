@@ -87,6 +87,7 @@ class PrimitiveOpStmt:
   example_input_meta4tensor_id: t.Callable[TensorId, InputTensorDesc]
   example_input_data4operand_id: t.Callable[OperandId, t.Optional[t.List[int]]]
   immediate_value4operand_id: t.Callable[[OperandId, t.Any], t.Any]
+  immediate_value4int_array_member_id: t.Callable[[TensorId, t.Any], t.Any]
 
 class PrimitiveOpUnittestsGenerator:
 
@@ -128,6 +129,9 @@ class PrimitiveOpUnittestsGenerator:
           op=op,
         ),
         immediate_value4operand_id=self.MakeImmediateValue4OperandId(op),
+        immediate_value4int_array_member_id=(
+          self.MakeImmediateValue4IntArrayMemberId(program_id, op)
+        ),
       )
       for input_spec_mode in self.input_spec_modes
       for program_id, op in uid_and_ops
@@ -154,12 +158,17 @@ class PrimitiveOpUnittestsGenerator:
       return self.GetImmediateValue4OperandId(op, operand_id, data)
     return ImmediateValue4OperandId
 
+  def MakeImmediateValue4IntArrayMemberId(self, program_id, op):
+    def ImmediateValue4IntArrayMemberId(tensor_id):
+      return self.GetImmediateValue4IntArrayMemberId(program_id, op, tensor_id)
+    return ImmediateValue4IntArrayMemberId
+
   def GetImmediateValue4OperandId(self, op, operand_id, data):
     if data is None:
       return None
     cpp_type_name = self.GetCppOperandTypeName(op, operand_id.operand_idx)
     if cpp_type_name == 'IntArray':
-      return data
+      return None
     if cpp_type_name == 'Scalar[]':
       return data
     if cpp_type_name in {'Scalar', 'Scalar(int)', 'Scalar(int64_t)', 'Scalar(float)', 'Scalar(double)'}:
@@ -168,6 +177,27 @@ class PrimitiveOpUnittestsGenerator:
       else:
         return data
     return None
+
+  def GetImmediateValue4IntArrayMemberId(self, program_id, op, tensor_id):
+    if isinstance(tensor_id, NullTensorId):
+      return (None, None)
+    def GetOperandIdx(tensor_id):
+      if isinstance(tensor_id, TensorListMemberId):
+        return tensor_id.operand_tensor_list_idx
+      if isinstance(tensor_id, OperandTensorId):
+        return tensor_id.operand_tensor_idx
+      raise NotImplementedError(f"unknown TensorId subclass {type(tensor_id)}")
+    cpp_type_name = self.GetCppOperandTypeName(op, GetOperandIdx(tensor_id))
+    if cpp_type_name != 'IntArray':
+      return (None, None)
+    tensor_meta = self.GetExampleInputsMeta4TensorId(
+      program_id=program_id,
+      op=op,
+      tensor_id=tensor_id,
+    )
+    if tensor_meta is None:
+      return (None, None)
+    return (tensor_meta.data, tensor_meta.dtype)
   
   def MakeExampleInputsMeta4TensorId(self, program_id, op):
     return lambda tensor_id: self.GetExampleInputsMeta4TensorId(

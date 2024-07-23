@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import typing as t
+import numpy as np
 
-PrimitiveId = t.TypeVar('PrimitiveId')
 PatternId = int
 
 # Repeat Pattern Expression
@@ -11,56 +11,38 @@ class RpExpr:
 
 @dataclass
 class PrimitiveRpExpr(RpExpr):
-  # len(pattern_ids) == len(primitive_ids)
-  pattern_ids: t.List[PatternId]
-  primitive_ids: t.List[PrimitiveId]
+  primitive_tensor: np.ndarray['N', np.int32]
 
 @dataclass
-class SymbolRpExpr(RpExpr):
-  symbol_pattern_id: PatternId
-
-@dataclass
-class ConcatenatedSymbolRpExpr(RpExpr):
-  children: t.List[SymbolRpExpr]
+class FoldRpExpr(RpExpr):
+  fold_tensor: np.ndarray['N', np.int32]
 
 @dataclass
 class LetsListRpExpr(RpExpr):
   symbol_pattern_ids: t.List[PatternId]
   symbol_rp_exprs: t.Union[t.List[PrimitiveRpExpr], 'LetsListRpExpr']
-  body_rp_expr: t.List[ConcatenatedSymbolRpExpr]
+  body_rp_expr: t.List[FoldRpExpr]
 
 @dataclass
 class LetsRpExpr(RpExpr):
   symbol_pattern_ids: t.List[PatternId]
   symbol_rp_exprs: t.Union[t.List[PrimitiveRpExpr], LetsListRpExpr]
-  body_rp_expr: t.Union[ConcatenatedSymbolRpExpr, 'LetsRpExpr']
+  body_rp_expr: t.Union[FoldRpExpr, 'LetsRpExpr']
 
 
 class PatternIdAllocator:
-  def __init__(self):
-    self.next_pattern_id: int = 0
-    self.primitive_id2pattern_id: t.Dict[PrimitiveId, PatternId] = {}
+  def __init__(self, next_pattern_id: int):
+    self.next_pattern_id = next_pattern_id
 
   def NewPatternId(self):
     value = self.next_pattern_id
     self.next_pattern_id += 1
     return value
 
-  def GetOrAllocatePatternId(primitive_id: PrimitiveId):
-    if primitive_id not in self.primitive_id2pattern_id:
-      self.primitive_id2pattern_id[primitive_id] = self.NewPatternId()
-    return self.primitive_id2pattern_id[primitive_id]
-
 def TrivialParse(
-  primitive_ids: t.List[PrimitiveId]
+  primitive_ids: t.List[int]
 ) -> t.Tuple[PrimitiveRpExpr, PatternIdAllocator]:
-  pattern_id_allocator = PatternIdAllocator()
-  pattern_ids = [
-    pattern_id_allocator.GetOrAllocatePatternId(primitive_id)
-    for primitive_id in primitive_ids
-  ]
-  primitive_rp_expr = PrimitiveRpExpr(
-    pattern_ids=pattern_ids,
-    primitive_ids=primitive_ids,
-  )
-  return primitive_rp_expr, pattern_id_allocator
+  primitive_tensor = np.array(primitive_ids, dtype=np.int32)
+  min_pattern_id = int(np.min(primitive_tensor))
+  assert min_pattern_id >= 0
+  return PrimitiveRpExpr(primitive_tensor), PatternIdAllocator(min_pattern_id + 1)

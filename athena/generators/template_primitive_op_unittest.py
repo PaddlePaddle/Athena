@@ -370,6 +370,13 @@ class CinnTestBase:
         {{op.tensor_name4tensor_id(tensor_id)}}
         {%- endfor -%}
     ):
+        {%- for tensor_id in op.tensor_ids -%}
+        {%- set data, dtype = op.immediate_value4int_array_member_id(tensor_id) -%}
+        {%- if data != None %}
+        {{op.tensor_name4tensor_id(tensor_id)}} = paddle._C_ops.full_int_array({{data}}, paddle.{{dtype}}, paddle.core.CPUPlace())
+        {%- endif %}
+        {%- endfor %}
+
         {%- for operand_id in op.operand_ids %}
         {{op.tensor_name4operand_id(operand_id)}} = {{get_operand_value(op, operand_id)}}
         {%- endfor %}

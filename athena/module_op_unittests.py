@@ -15,6 +15,8 @@ import glob as glob
 import os
 from athena.util.primitive_op_extractor import PrimitiveOpExtractor
 import athena.ir.ir_type as ir_type
+import itertools
+from collections import defaultdict
 
 FLAGS = flags.FLAGS
 
@@ -32,11 +34,12 @@ def main(argv):
   example_inputs_file = FLAGS.example_inputs
   for file in glob.glob(f"{FLAGS.output_dir}/test_module_op_*.py"):
     os.remove(file)
-  for name, unittest in GetOutputUnittests(original_programs_file, example_inputs_file):
-    sha256sum = GetSha256sum(unittest)
-    filepath = f"{FLAGS.output_dir}/test_module_op_{sha256sum[0:32]}.py"
+  seg_counter = defaultdict(lambda: itertools.count())
+  for uid, unittest in GetOutputUnittests(original_programs_file, example_inputs_file):
+    unique_name = f"{uid}_{next(seg_counter[uid])}"
+    filepath = f"{FLAGS.output_dir}/test_module_op_{unique_name}.py"
     WriteToFile(filepath, unittest)
-    PrintToTerminal(name, filepath, unittest)
+    PrintToTerminal(unique_name, filepath, unittest)
 
 def GetSha256sum(content):
   m = hashlib.sha256()
@@ -69,14 +72,22 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
   def MakeUnittestGenerator(ir_program):
     return ModuleOpUnittestGenerator(ir_program, example_inputs_meta_getter)
   yield from (
-    (name, unittest)
+    (GetSha256sum(",".join(op_names))[0:32], unittest)
     for cls in GetProgramClasses(original_programs_file)
     for ir_program in [cls()]
     if not IsBackwardProgram(ir_program)
     if AllInputOutputTypesSupported(ir_program)
     for generator in [MakeUnittestGenerator(ir_program)]
-    for name, unittest in [generator.Generate()]
+    for op_names in [GetOpNames(ir_program)]
+    for unittest in [generator.Generate()]
   )
+
+def GetOpNames(ir_program):
+  primitive_op_extractor = PrimitiveOpExtractor()
+  return [
+    op.name
+    for op in primitive_op_extractor.Extract(ir_program)
+  ]
 
 def AllInputOutputTypesSupported(ir_program):
   supported_operand_types = (

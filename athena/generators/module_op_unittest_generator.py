@@ -99,7 +99,7 @@ class ModuleOpUnittestGenerator:
       MakeBlockDescriptor(block)
       for block in self.blocks_generator.Generate()
     ]
-    return self.name, self._RenderTemplate(blocks=blocks)
+    return self._RenderTemplate(blocks=blocks)
 
   def _RenderTemplate(self, blocks):
     template = self._GetTemplate("template_module_op_unittests.py")
