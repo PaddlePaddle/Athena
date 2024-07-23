@@ -1,0 +1,41 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel",
+    "setuptools-scm"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "athena"
+dynamic = ["version"]
+description = "Automatically Debug Toolkits for Paddle CINN"
+readme = "README.md"
+authors = [
+    {name = "paddle-better", email = "Paddle-better@baidu.com"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+license = {text = "Apache License v2.0"}
+requires-python = ">=3.8"
+dependencies = []
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION_NUMBER"}
+
+[tool.setuptools.packages.find]
+include = ["athena*"]
+
+[tool.setuptools_scm]
+write_to = "athena/version.py"
+
+[tool.mypy]
+files = "setup.py"
+python_version = "3.8"
+strict = true
+show_error_codes = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+warn_unreachable = true
