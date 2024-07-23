@@ -1,1 +1,0 @@
-python3.9 -m athena.primitive_op_unittests --ir_programs=./primitive-op-input/original_programs.py --example_inputs=./primitive-op-input/programs_example_input_tensor_meta.py --output_dir=./primitive-op-output
