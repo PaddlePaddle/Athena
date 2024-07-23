@@ -23,4 +23,3 @@ GroupInfoAttribute = namedtuple("GroupInfoAttribute", ["value"])
 CINNKernelInfoAttribute = namedtuple("CINNKernelInfoAttribute", ["value"])
 SymbolAttribute = namedtuple("SymbolAttribute", ["value"])
 UnclassifiedAttribute = namedtuple("UnclassifiedAttribute", ["value"])
-

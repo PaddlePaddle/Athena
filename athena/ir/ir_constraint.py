@@ -3,99 +3,117 @@ import typing as t
 import athena.ir.ir_symbol as ir_symbol
 from athena.util.hash_combine import hash_combine
 
+
 @dataclass
 class ConstraintRecord:
-  pass
+    pass
+
 
 @dataclass
 class EqualConstraintRecord(ConstraintRecord):
-  lhs: ir_symbol.DimExpr
-  rhs: ir_symbol.DimExpr
+    lhs: ir_symbol.DimExpr
+    rhs: ir_symbol.DimExpr
+
 
 @dataclass
 class BroadcastableConstraintRecord(ConstraintRecord):
-  lhs: ir_symbol.DimExpr
-  rhs: ir_symbol.DimExpr
+    lhs: ir_symbol.DimExpr
+    rhs: ir_symbol.DimExpr
+
 
 @dataclass
 class GtOneConstraintRecord(ConstraintRecord):
-  value: ir_symbol.DimExpr
+    value: ir_symbol.DimExpr
+
 
 @dataclass
 class Constraint:
-  pass
+    pass
+
 
 @dataclass
 class NoConstraint(Constraint):
-  no_dim_exprs: t.List[ir_symbol.DimExpr]
+    no_dim_exprs: t.List[ir_symbol.DimExpr]
 
-  def __hash__(self):
-    hash_value = id(NoConstraint)
-    for dim_expr in self.equal_dim_exprs:
-      hash_value = hash_combine(hash_value, hash(dim_expr))
-    return hash_value
+    def __hash__(self):
+        hash_value = id(NoConstraint)
+        for dim_expr in self.equal_dim_exprs:
+            hash_value = hash_combine(hash_value, hash(dim_expr))
+        return hash_value
+
 
 @dataclass
 class EqualConstraint(Constraint):
-  equal_dim_exprs: t.List[ir_symbol.DimExpr]
+    equal_dim_exprs: t.List[ir_symbol.DimExpr]
 
-  def __hash__(self):
-    hash_value = id(EqualConstraint)
-    for dim_expr in self.equal_dim_exprs:
-      hash_value = hash_combine(hash_value, hash(dim_expr))
-    return hash_value
+    def __hash__(self):
+        hash_value = id(EqualConstraint)
+        for dim_expr in self.equal_dim_exprs:
+            hash_value = hash_combine(hash_value, hash(dim_expr))
+        return hash_value
+
 
 @dataclass
 class BroadcastableConstraint(Constraint):
-  braodcastable_dim_exprs: t.List[ir_symbol.DimExpr]
+    braodcastable_dim_exprs: t.List[ir_symbol.DimExpr]
 
-  def __hash__(self):
-    hash_value = id(BroadcastableConstraint)
-    for dim_expr in self.braodcastable_dim_exprs:
-      hash_value = hash_combine(hash_value, hash(dim_expr))
-    return hash_value
+    def __hash__(self):
+        hash_value = id(BroadcastableConstraint)
+        for dim_expr in self.braodcastable_dim_exprs:
+            hash_value = hash_combine(hash_value, hash(dim_expr))
+        return hash_value
+
 
 @dataclass
 class GtOneConstraint(Constraint):
-  gt_one_dim_expr: ir_symbol.DimExpr
+    gt_one_dim_expr: ir_symbol.DimExpr
 
-  def __hash__(self):
-    hash_value = id(GtOneConstraint)
-    hash_value = hash_combine(hash_value, hash(self.gt_one_dim_expr))
-    return hash_value
+    def __hash__(self):
+        hash_value = id(GtOneConstraint)
+        hash_value = hash_combine(hash_value, hash(self.gt_one_dim_expr))
+        return hash_value
+
 
 @dataclass
 class SymmetricDimVar:
-  pass
+    pass
+
 
 @dataclass
 class SymbolSymmetricDimVar(SymmetricDimVar):
-  symbol: str
+    symbol: str
+
 
 @dataclass
 class ComposedSymmetricDimVar(SymmetricDimVar):
-  symmetric_dim_vars: t.List[SymmetricDimVar]
+    symmetric_dim_vars: t.List[SymmetricDimVar]
+
 
 @dataclass
 class AnySymmetricDimVar(ComposedSymmetricDimVar):
-  pass
+    pass
+
 
 @dataclass
 class AddSymmetricDimVar(ComposedSymmetricDimVar):
-  pass
+    pass
+
 
 @dataclass
 class MulSymmetricDimVar(ComposedSymmetricDimVar):
-  pass
+    pass
+
 
 @dataclass
 class MaxSymmetricDimVar(ComposedSymmetricDimVar):
-  pass
+    pass
+
 
 @dataclass
 class MinSymmetricDimVar(ComposedSymmetricDimVar):
-  pass
+    pass
+
 
 @dataclass
 class BroadcastSymmetricDimVar(ComposedSymmetricDimVar):
-  pass
+    pass
