@@ -447,7 +447,7 @@ class PrimitiveOpUnittestsGenerator:
     ]
   
   def _RenderTemplate(self, ops):
-    template = self._GetTemplate("template_primitive_op_unittest.py")
+    template = self._GetTemplate("template_primitive_op_unittest.jinja")
     cached_test_class_names = set()
     empty_str = lambda x:""
     PADDLE_DEBUG_ENABLE_CINN = os.getenv('PADDLE_DEBUG_ENABLE_CINN') not in {

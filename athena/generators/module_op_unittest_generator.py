@@ -102,7 +102,7 @@ class ModuleOpUnittestGenerator:
     return self._RenderTemplate(blocks=blocks)
 
   def _RenderTemplate(self, blocks):
-    template = self._GetTemplate("template_module_op_unittests.py")
+    template = self._GetTemplate("template_module_op_unittests.jinja")
     return template.render(
       blocks=blocks,
       enable_early_return=self.EnableEarlyReturn(),

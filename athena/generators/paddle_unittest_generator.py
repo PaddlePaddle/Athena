@@ -47,7 +47,7 @@ def RenderTemplate(
   output_tensors: list,
   dim_instance_generator: DimInstanceGenerator
 ):
-  template = _GetTemplate("template_paddle_unittest.py")
+  template = _GetTemplate("template_paddle_unittest.jinja")
   input_arg_names = [
     input_tensor.name for input_tensor in input_tensors
   ]

@@ -140,7 +140,7 @@ class OpExampleInputMetaScriptGenerator:
     return self.name, self._RenderTemplate(programs=programs)
 
   def _RenderTemplate(self, programs):
-    template = self._GetTemplate("template_op_example_input_meta_script.py")
+    template = self._GetTemplate("template_op_example_input_meta_script.jinja")
     return template.render(programs=programs)
 
   def _GetTemplate(self, template_name):
