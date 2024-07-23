@@ -1,5 +1,4 @@
 from athena.util.load_pir_py_classes import GetProgramClasses, GetClasses
-
 from athena.util.op_example_inputs_meta_getter import (
     MakeOpExampleInputsMetaGetter,
 )
@@ -8,6 +7,7 @@ from athena.generators.primitive_op_unittests_generator import (
     PrimitiveOpUnittestsGenerator,
 )
 from athena.util.ir_program_util import IsBackwardProgram, GetProgramId
+import athena.ir.ir_op as ir_op
 import athena.ir.ir_type as ir_type
 from absl import app
 from absl import flags
@@ -91,9 +91,7 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
         uid_and_ops = [
             (program_id, op)
             for program_id, op in uid_and_ops
-            if op_example_inputs_meta_getter.HasAllInputs(
-                program_id, op.op_id, num_inputs=len(op.input_types)
-            )
+            if op_example_inputs_meta_getter.HasAllInputs(program_id, op)
             if all(
                 isinstance(input_type, valid_operand_types)
                 for input_type in op.input_types

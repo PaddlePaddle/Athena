@@ -7,10 +7,6 @@ from athena.traits.constaint_trait import ConstraintTrait
 import importlib
 import inspect
 
-class PirTrait(ArgsTrait,
-               OpTrait,
-               TypeTrait,
-               AttrTrait,
-               SymbolTrait,
-               ConstraintTrait):
-  pass
+
+class PirTrait(ArgsTrait, OpTrait, TypeTrait, AttrTrait, SymbolTrait, ConstraintTrait):
+    pass

@@ -5,6 +5,7 @@ import random
 from absl import app
 from absl import flags
 import traceback
+import datetime
 
 flags.DEFINE_integer("max_try_cnt", 10, "max try cnt")
 flags.DEFINE_string("output_file", "", "output file")
@@ -78,7 +79,7 @@ def AppendRecordClassToOutputFile(content):
 {%- elif big_dtype == "bool" -%}
     paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
 {%- elif big_dtype == "int64" -%}
-    paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='{{dtype}}')
+    paddle.cast(paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='int64'), '{{dtype}}')
 {%- elif big_dtype == "float64" -%}
     paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
 {%- endif -%}
@@ -103,12 +104,15 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
             op_input2data[(op_id, input_idx)] = InitTensorData(inputs[input_idx])
         def Record():
             for input_idx in range(len(inputs)):
+                shape = op_input2shape.get((op_id, input_idx), None)
+                if shape is None:
+                    continue
                 AppendRecordClassToOutputFile(GetRecordClass(
                     program_id={{program_id}},
                     op_id=op_id,
                     op_name=op_name,
                     input_idx=input_idx,
-                    shape=op_input2shape.get((op_id, input_idx), None),
+                    shape=shape,
                     data=op_input2data.get((op_id, input_idx), None),
                 ))
         return Record
@@ -132,6 +136,7 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
         def {{block.block_name}}(self, {{block.input_arg_names | join(", ")}}):
             
         {%- for stmt in block.stmts %}
+        {%- set stmt_idx = loop.index0 %}
             # ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
             recorder = GetInputMetaRecorder("{{stmt.op_name}}", {{stmt.op_id}}, {{stmt.input_tensor_names | join(", ")}})
             {%- for pycode in stmt.pycode %}
@@ -146,9 +151,12 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
             {%- endif %}
             {%- endfor %}
             recorder()
+            {%- for unused_var in block.get_unused_vars(stmt_idx) %}
+            del {{unused_var}}
+            {%- endfor %}
             
         {%- endfor %}
-            return {{block.output_arg_names | join(", ")}}
+            return {{block.output_arg_names | join(", ")}},
     {%- endfor %}
     extractor = OpInputShapesExtractor()
     for _ in range(FLAGS.max_try_cnt):
@@ -167,13 +175,21 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
             break
 {% endfor %}
 
+exitcode = 0
+
 def InferAndSaveOpInputDims(argv):
+    global exitcode
+    print("start InferAndSaveOpInputDims", file=sys.stderr)
 {%- for program_id, blocks in programs %}
+{% set program_idx = loop.index0 %}
     try:
+        print(datetime.datetime.now(), "InferAndSaveOpInputDims... ( {{program_idx}} / {{programs | length}} )", file=sys.stderr)
         InferAndSaveOpInputDims_Program{{program_id}}()
     except Exception as e:
+        exitcode = 1
         traceback.print_exc()
 {%- endfor %}
-
+    sys.exit(exitcode)
+    
 if __name__ == '__main__':
     app.run(InferAndSaveOpInputDims)
