@@ -4,7 +4,7 @@ import numpy as np
 import paddle
 from collections import defaultdict
 
-PrimitiveId = t.TypeVar('PrimitiveId')
+PrimitiveId = t.TypeVar("PrimitiveId")
 
 TokenId = int
 
@@ -14,9 +14,11 @@ TokenId = int
 class RpExpr:
     pass
 
+
 @dataclass
 class ListRpExpr(RpExpr):
     pass
+
 
 @dataclass
 class TokenizedRpExpr(RpExpr):
@@ -28,18 +30,22 @@ class TokenizedRpExpr(RpExpr):
 class TokenRpExpr(RpExpr):
     pass
 
+
 @dataclass
 class NaiveTokenListRpExpr(ListRpExpr):
     tensors: t.List[np.ndarray["N", np.int64]]
+
 
 @dataclass
 class FlattenedTokenListRpExpr(ListRpExpr):
     tensor_list_size: int
     flattened_tensor: TokenRpExpr
 
+
 @dataclass
 class NaiveTokenRpExpr(TokenRpExpr):
     tensor: np.ndarray["N", np.int64]
+
 
 @dataclass
 class LetsTokenRpExpr(TokenRpExpr):
@@ -70,10 +76,10 @@ def Tokenize(
     token_id_allocator = TokenIdAllocator()
     primitive_id2token_id = defaultdict(token_id_allocator.NewTokenId)
     token_tensors = [
-        paddle.to_tensor([
-            primitive_id2token_id[primitive_id]
-            for primitive_id in primitive_id_list
-        ], paddle.int64)
+        paddle.to_tensor(
+            [primitive_id2token_id[primitive_id] for primitive_id in primitive_id_list],
+            paddle.int64,
+        )
         for primitive_id_list in primitive_id_lists
     ]
     return NaiveTokenListRpExpr(token_tensors), token_id_allocator

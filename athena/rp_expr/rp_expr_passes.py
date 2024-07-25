@@ -15,8 +15,10 @@ from athena.rp_expr.rp_expr import (
 )
 import itertools
 
+
 class Pass:
     pass
+
 
 class FlattenTokenListPass(Pass):
     def __init__(self, id_allocator: TokenIdAllocator):
@@ -25,10 +27,12 @@ class FlattenTokenListPass(Pass):
     def __call__(self, token_tensors_rp_expr: NaiveTokenListRpExpr):
         tensor_list_size = len(token_tensors_rp_expr.tensors)
         self.id_allocator.Skip(tensor_list_size)
+
         def GetSepTensor(i):
             if i == 0:
                 return []
             return [paddle.to_tensor([i], paddle.int64)]
+
         token_tensors = [
             tensor
             for i, token_tensor in enumerate(token_tensors_rp_expr.tensors)
@@ -47,7 +51,7 @@ class FoldTokensPass(Pass):
         self.max_windows_size = 64
         self.id_allocator = id_allocator
         size = id_allocator.NextTokenId()
-        self.embedding = paddle.uniform([size], dtype='float64', min=-1, max=1)
+        self.embedding = paddle.uniform([size], dtype="float64", min=-1, max=1)
         self.embedding.stop_gradient = False
 
     def __call__(self, token_tensor: NaiveTokenRpExpr):
@@ -67,7 +71,7 @@ class FoldTokensPass(Pass):
         start = indexes[0]
         return True, LetsTokenRpExpr(
             symbol_token_ids=[new_token_id],
-            symbol_token_tensors=[input_tensor[start:(start + most_frequent_length)]],
+            symbol_token_tensors=[input_tensor[start : (start + most_frequent_length)]],
             body_rp_expr=NaiveTokenRpExpr(tensor=replacement),
         )
 
@@ -77,7 +81,7 @@ class FoldTokensPass(Pass):
         indexes,
         new_token_id,
         input_tensor: np.ndarray["N", np.int64],
-    ) -> t.Tuple[bool,  np.ndarray["N", np.int64]]:
+    ) -> t.Tuple[bool, np.ndarray["N", np.int64]]:
         new_token_tensor = paddle.to_tensor([new_token_id], paddle.int64)
         num_tokens = input_tensor.shape[0]
         if pattern_length == 1:
@@ -91,20 +95,26 @@ class FoldTokensPass(Pass):
             return False, input_tensor
         assert disjoint_range_starts[-1] + pattern_length <= num_tokens
         first_start = disjoint_range_starts[0]
-        pattern_tensor = input_tensor[first_start:(first_start + pattern_length)]
-        segment_starts = [0] + [
-            index
-            for start in disjoint_range_starts
-            for index in [start, start + pattern_length]
-        ] + [num_tokens]
+        pattern_tensor = input_tensor[first_start : (first_start + pattern_length)]
+        segment_starts = (
+            [0]
+            + [
+                index
+                for start in disjoint_range_starts
+                for index in [start, start + pattern_length]
+            ]
+            + [num_tokens]
+        )
         uniqued_segment_starts = paddle.unique(paddle.to_tensor(segment_starts))
         segment_lengths = paddle.diff(uniqued_segment_starts).numpy().tolist()
+
         def ReplaceTensor(tensor):
             if tensor.shape != pattern_tensor.shape:
                 return tensor
             if bool(paddle.all(tensor == pattern_tensor)):
                 return new_token_tensor
             return tensor
+
         replaced_segment_tensors = [
             ReplaceTensor(tensor)
             for tensor in paddle.split(input_tensor, segment_lengths)
@@ -115,15 +125,12 @@ class FoldTokensPass(Pass):
     def GetConv(self, num_tokens):
         windows_size = min(num_tokens, self.max_windows_size)
         weight = paddle.uniform(
-            [windows_size, windows_size],
-            dtype='float64',
-            min=-1,
-            max=1
+            [windows_size, windows_size], dtype="float64", min=-1, max=1
         )
         weight.stop_gradient = False
         weight_shape = (windows_size, 1, windows_size)
         conv_weight = paddle.triu(weight).transpose([1, 0]).reshape(weight_shape)
-        conv = lambda input: F.conv1d(input, conv_weight, padding='VALID')
+        conv = lambda input: F.conv1d(input, conv_weight, padding="VALID")
         return conv, windows_size
 
     def GetDisjoint(self, gap, indexes):
@@ -151,20 +158,22 @@ class FoldTokensPass(Pass):
         y_hash = y.view(paddle.int64)
         hash_weight = paddle.arange(windows_size).reshape((-1, 1)).expand(y_hash.shape)
         weighted_y_hash = paddle.concat(
-            [hash_weight.reshape((-1, 1)), y_hash.reshape((-1, 1))],
-            axis=1
+            [hash_weight.reshape((-1, 1)), y_hash.reshape((-1, 1))], axis=1
         )
         unique_weighted_hash, counts = paddle.unique(
-            weighted_y_hash,
-            axis=0,
-            return_counts=True
+            weighted_y_hash, axis=0, return_counts=True
         )
-        most_frequent_hash_idx = paddle.argmax(unique_weighted_hash[:, 0] * (counts - 1))
+        most_frequent_hash_idx = paddle.argmax(
+            unique_weighted_hash[:, 0] * (counts - 1)
+        )
         most_frequent_hash = int(unique_weighted_hash[most_frequent_hash_idx, 1])
         most_frequent_hash_weight = int(unique_weighted_hash[most_frequent_hash_idx, 0])
-        indexes, = paddle.where(most_frequent_hash == y_hash[most_frequent_hash_weight, :])
+        (indexes,) = paddle.where(
+            most_frequent_hash == y_hash[most_frequent_hash_weight, :]
+        )
         indexes = indexes.reshape((-1,))
         return most_frequent_hash_weight + 1, indexes
+
 
 class RecursiveFoldTokensPass(Pass):
     def __init__(self, id_allocator: TokenIdAllocator):

@@ -1,6 +1,10 @@
 import unittest
 from athena.rp_expr.rp_expr import Tokenize
-from athena.rp_expr.rp_expr_passes import FlattenTokenListPass, FoldTokensPass, RecursiveFoldTokensPass
+from athena.rp_expr.rp_expr_passes import (
+    FlattenTokenListPass,
+    FoldTokensPass,
+    RecursiveFoldTokensPass,
+)
 
 
 class TestTokenize(unittest.TestCase):
@@ -21,7 +25,7 @@ class TestFlattenTokenListPass(unittest.TestCase):
         rp_expr_pass = FlattenTokenListPass(id_allocator)
         success, flattened_rp_expr_pass = rp_expr_pass(token_list)
         self.assertTrue(success)
-        self.assertEqual(id_allocator.NextTokenId(), base + 2*size - 1)
+        self.assertEqual(id_allocator.NextTokenId(), base + 2 * size - 1)
 
 
 class TestFoldTokensPass(unittest.TestCase):
@@ -66,6 +70,7 @@ class TestRecursiveFoldTokensPass(unittest.TestCase):
         self.assertEqual(pattern, [[3, 4, 5], [8, 6]])
         self.assertEqual(replacement, [8, 9])
         self.assertEqual(output, [8, 1, 9, 2, 9, 7])
+
 
 if __name__ == "__main__":
     unittest.main()
