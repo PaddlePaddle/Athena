@@ -118,7 +118,7 @@ class PaddleFuncBodyGenerator:
                 f"ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
             ),
             self.Indent0(
-                f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is not None else int(ATHENA_WHILE_LOOP_LIMIT))"
+                f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
             ),
             self.Indent0(f"while_loop_counter_{op.op_id} = 0"),
             self.Indent0(f"while {cond.name}:"),
