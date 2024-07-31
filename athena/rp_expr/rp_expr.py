@@ -21,6 +21,11 @@ class ListRpExpr(RpExpr):
 
 
 @dataclass
+class NaiveTokenListRpExpr(ListRpExpr):
+    tensors: t.List[np.ndarray["N", np.int64]]
+
+
+@dataclass
 class TokenizedRpExpr(RpExpr):
     token_id2primitive_id: t.List[PrimitiveId]
     token_tensors: ListRpExpr
@@ -29,11 +34,6 @@ class TokenizedRpExpr(RpExpr):
 @dataclass
 class TokenRpExpr(RpExpr):
     pass
-
-
-@dataclass
-class NaiveTokenListRpExpr(ListRpExpr):
-    tensors: t.List[np.ndarray["N", np.int64]]
 
 
 @dataclass
@@ -50,8 +50,15 @@ class NaiveTokenRpExpr(TokenRpExpr):
 @dataclass
 class LetsTokenRpExpr(TokenRpExpr):
     symbol_token_ids: t.List[TokenId]
-    symbol_token_tensors: t.List[NaiveTokenRpExpr]
+    symbol_token_tensors: t.List[np.ndarray["N", np.int64]]
     body_rp_expr: NaiveTokenRpExpr
+
+
+@dataclass
+class LetsListTokenRpExpr(TokenRpExpr):
+    symbol_token_ids: t.List[TokenId]
+    symbol_token_tensors: t.List[np.ndarray["N", np.int64]]
+    body_rp_expr: t.List[np.ndarray["N", np.int64]]
 
 
 class TokenIdAllocator:
@@ -82,4 +89,11 @@ def Tokenize(
         )
         for primitive_id_list in primitive_id_lists
     ]
-    return NaiveTokenListRpExpr(token_tensors), token_id_allocator
+    token_id2primitive_id = [None] * len(primitive_id2token_id)
+    for primitive_id, token_id in primitive_id2token_id.items():
+        token_id2primitive_id[token_id] = primitive_id
+    return (
+        NaiveTokenListRpExpr(token_tensors),
+        token_id_allocator,
+        token_id2primitive_id,
+    )

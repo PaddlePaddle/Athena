@@ -12,6 +12,7 @@ from athena.rp_expr.rp_expr import (
     FlattenedTokenListRpExpr,
     NaiveTokenRpExpr,
     LetsTokenRpExpr,
+    LetsListTokenRpExpr,
 )
 import itertools
 
@@ -59,14 +60,12 @@ class FoldTokensPass(Pass):
         most_frequent_length, indexes = self.GetMostFrequentPatternLengthAndIndexes(
             input_tensor
         )
-        new_token_id = self.id_allocator.NewTokenId()
-        success, replacement = self.Replace(
+        new_token_id, replacement = self.Replace(
             pattern_length=most_frequent_length,
             indexes=indexes,
-            new_token_id=new_token_id,
             input_tensor=input_tensor,
         )
-        if not success:
+        if new_token_id is None:
             return False, token_tensor
         start = indexes[0]
         return True, LetsTokenRpExpr(
@@ -79,20 +78,18 @@ class FoldTokensPass(Pass):
         self,
         pattern_length,
         indexes,
-        new_token_id,
         input_tensor: np.ndarray["N", np.int64],
-    ) -> t.Tuple[bool, np.ndarray["N", np.int64]]:
-        new_token_tensor = paddle.to_tensor([new_token_id], paddle.int64)
+    ) -> t.Tuple[bool, int, np.ndarray["N", np.int64]]:
         num_tokens = input_tensor.shape[0]
         if pattern_length == 1:
-            return False, input_tensor
+            return None, input_tensor
         assert indexes.shape[0] > 0
         disjoint_range_starts = [
             start
             for start in self.GetDisjoint(pattern_length, indexes.numpy().tolist())
         ]
         if len(disjoint_range_starts) <= 1:
-            return False, input_tensor
+            return None, input_tensor
         assert disjoint_range_starts[-1] + pattern_length <= num_tokens
         first_start = disjoint_range_starts[0]
         pattern_tensor = input_tensor[first_start : (first_start + pattern_length)]
@@ -108,6 +105,9 @@ class FoldTokensPass(Pass):
         uniqued_segment_starts = paddle.unique(paddle.to_tensor(segment_starts))
         segment_lengths = paddle.diff(uniqued_segment_starts).numpy().tolist()
 
+        new_token_id = self.id_allocator.NewTokenId()
+        new_token_tensor = paddle.to_tensor([new_token_id], paddle.int64)
+
         def ReplaceTensor(tensor):
             if tensor.shape != pattern_tensor.shape:
                 return tensor
@@ -120,7 +120,7 @@ class FoldTokensPass(Pass):
             for tensor in paddle.split(input_tensor, segment_lengths)
         ]
         output_tensor = paddle.concat(replaced_segment_tensors)
-        return True, output_tensor
+        return new_token_id, output_tensor
 
     def GetConv(self, num_tokens):
         windows_size = min(num_tokens, self.max_windows_size)
@@ -204,3 +204,64 @@ class RecursiveFoldTokensPass(Pass):
             symbol_token_tensors=symbol_token_tensors,
             body_rp_expr=token_tensor,
         )
+
+
+class FoldIfTokenIdGreatEqualPass(Pass):
+    def __init__(
+        self,
+        id_allocator: TokenIdAllocator,
+        threshold_start_token_id: int,
+    ):
+        self.id_allocator = id_allocator
+        self.threshold_start_token_id = threshold_start_token_id
+
+    def __call__(self, token_rp_expr: NaiveTokenRpExpr):
+        indexes_ge_threshold = self.GetIndexesGeThreshold(token_rp_expr.tensor)
+        token_ids_ge_threshold = paddle.gather(
+            token_rp_expr.tensor, indexes_ge_threshold
+        )
+        consecutive_index_range_lengths = self.GetConsecutiveIndexRangeLengths(
+            indexes_ge_threshold=indexes_ge_threshold,
+        )
+        tensors = paddle.split(token_ids_ge_threshold, consecutive_index_range_lengths)
+
+        def GetSymbolsValuesBodyTriple(tensor):
+            if tensor.shape[0] == 1:
+                return [], [], tensor
+            new_token_id = self.id_allocator.NewTokenId()
+            return (
+                [new_token_id],
+                [tensor],
+                paddle.to_tensor([new_token_id], paddle.int64),
+            )
+
+        symbols_values_body_triples = [
+            GetSymbolsValuesBodyTriple(tensor) for tensor in tensors
+        ]
+        return True, LetsListTokenRpExpr(
+            symbol_token_ids=[
+                token_id
+                for new_token_ids, _, _ in symbols_values_body_triples
+                for token_id in new_token_ids
+            ],
+            symbol_token_tensors=[
+                token_tensor
+                for _, token_tensors, _ in symbols_values_body_triples
+                for token_tensor in token_tensors
+            ],
+            body_rp_expr=[
+                body_tensor for _, _, body_tensor in symbols_values_body_triples
+            ],
+        )
+
+    def GetIndexesGeThreshold(self, token_tensor: np.ndarray["N", np.int64]):
+        (indexes,) = paddle.where(token_tensor >= self.threshold_start_token_id)
+        return indexes.reshape([-1])
+
+    def GetConsecutiveIndexRangeLengths(self, indexes_ge_threshold):
+        groups = self.GetNumpyConsecutiveGroups(indexes_ge_threshold.numpy())
+        return [group.shape[0] for group in groups]
+
+    # reference: https://stackoverflow.com/questions/7352684/how-to-find-the-groups-of-consecutive-elements-in-a-numpy-array
+    def GetNumpyConsecutiveGroups(self, data, stepsize=1):
+        return np.split(data, np.where(np.diff(data) != stepsize)[0] + 1)
