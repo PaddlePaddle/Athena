@@ -369,5 +369,10 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
         outs = self.GenerateCOpsCall(op, inputs, op_name="rnn")
         return f"{outs} + (None,)"
 
-    def pd_op_select_input(self, op, cond, *inputs):
-        return f"[{', '.join(x.name for x in inputs)}][int({cond.name})]"
+    def pd_op_slice(self, op, *inputs):
+        if op.attrs["decrease_axis"] == "[0]" and op.output_types[0].shape == [1]:
+            op.attrs["decrease_axis"] = "[]"
+        return self.GenerateCOpsCall(op, inputs)
+
+    def pd_op_select_input(self, op, cond, elem0, elem1):
+        return f"({elem0.name} if {cond.name} == 0 else {elem1.name})"
