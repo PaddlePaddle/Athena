@@ -4,7 +4,7 @@ from athena.generators.paddle_op_call_generator import PaddleOpCallGenerator
 from athena.generators.global_tensor_converter import GlobalTensorConverter
 from athena.util.name_generator import NameGenerator
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Union, Callable
 from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.tensor_topo import (
     GetOpId2TensorNamesUsedByMeAndDownstream,
@@ -14,11 +14,12 @@ from athena.util.tensor_topo import (
 from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
 from athena.util.block_op_calls_extractor import BlockOpCallsExtractor
+import athena.util.lambda_util as fn
 
 
 @dataclass
 class IndentedPyCode:
-    pycode: str
+    pycode: Callable[Callable[str, str], str]
     num_tabs: int
 
 
@@ -94,8 +95,9 @@ class PaddleFuncBodyGenerator:
         return self.CollectPyCodeStmt(get_stmts, op, *input_tensors, **kwargs)
 
     def get_stmts_builtin_split(self, local_output_tensor_names, op, x):
-        output_unpack_str = ", ".join(local_output_tensor_names)
-        return [self.Indent0(f"{output_unpack_str}, = {x.name}")]
+        x_name = x.name
+        output_unpack_str = fn.join_map(local_output_tensor_names)
+        return [self.Indent0(lambda f: f"{output_unpack_str(f)}, = {f(x_name)}")]
 
     def get_stmts_pd_op_while(
         self,
@@ -107,27 +109,32 @@ class PaddleFuncBodyGenerator:
         block_func, *free_vars = kwargs["blocks"][0][0]
         cond, *args = local_input_tensors
         free_vars = [self.tensor_converter.ConvertToLocalTensor(t) for t in free_vars]
-        output_unpack_str = ", ".join(local_output_tensor_names)
-        input_var_str = ", ".join(t.name for t in local_input_tensors)
+        output_unpack_str = fn.join_map(local_output_tensor_names)
+        input_var_str = fn.join_map([t.name for t in local_input_tensors])
         block_name = BlockNameGenerator().Generate(op, region_idx=0, block_idx=0)
-        block_args_str = ", ".join(t.name for t in [*free_vars, *args])
-        arg_str = ", ".join(t.name for t in args)
+        block_args_str = fn.join_map([t.name for t in [*free_vars, *args]])
+        arg_str = fn.join_map([t.name for t in args])
+        cond_name = cond.name
         return [
-            self.Indent0(f"import os"),
+            self.Indent0(lambda f: f"import os"),
             self.Indent0(
-                f"ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
+                lambda f: f"ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
             ),
             self.Indent0(
-                f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
+                lambda f: f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
             ),
-            self.Indent0(f"while_loop_counter_{op.op_id} = 0"),
-            self.Indent0(f"while {cond.name}:"),
-            self.Indent1(f"{input_var_str}, = self.{block_name}({block_args_str})"),
-            self.Indent1(f"while_loop_counter_{op.op_id} += 1"),
-            self.Indent1(f"if while_loop_counter_{op.op_id} > kWhileLoopLimit:"),
-            self.Indent2(f"break"),
-            self.Indent1(f""),
-            self.Indent0(f"{output_unpack_str}, = {arg_str},"),
+            self.Indent0(lambda f: f"while_loop_counter_{op.op_id} = 0"),
+            self.Indent0(lambda f: f"while {f(cond_name)}:"),
+            self.Indent1(
+                lambda f: f"{input_var_str(f)}, = self.{block_name}({block_args_str(f)})"
+            ),
+            self.Indent1(lambda f: f"while_loop_counter_{op.op_id} += 1"),
+            self.Indent1(
+                lambda f: f"if while_loop_counter_{op.op_id} > kWhileLoopLimit:"
+            ),
+            self.Indent2(lambda f: f"break"),
+            self.Indent1(lambda f: f""),
+            self.Indent0(lambda f: f"{output_unpack_str(f)}, = {arg_str(f)},"),
         ]
 
     def get_stmts_pd_op_if(
@@ -139,35 +146,45 @@ class PaddleFuncBodyGenerator:
     ):
         _, *true_branch_free_vars = kwargs["blocks"][0][0]
         _, *false_branch_free_vars = kwargs["blocks"][1][0]
-        true_branch_input_names = ", ".join(
-            local_tensor.name
-            for t in true_branch_free_vars
-            for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+        true_branch_input_names = fn.join_map(
+            [
+                local_tensor.name
+                for t in true_branch_free_vars
+                for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+            ]
         )
-        false_branch_input_names = ", ".join(
-            local_tensor.name
-            for t in false_branch_free_vars
-            for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+        false_branch_input_names = fn.join_map(
+            [
+                local_tensor.name
+                for t in false_branch_free_vars
+                for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+            ]
         )
-        ret = ", ".join(local_output_tensor_names)
+        ret = fn.join_map(local_output_tensor_names)
         true_block_name = BlockNameGenerator().Generate(op, region_idx=0, block_idx=0)
         false_block_name = BlockNameGenerator().Generate(op, region_idx=1, block_idx=0)
+        cond_name = cond.name
         return [
-            self.Indent0(f"if {cond.name}:"),
-            self.Indent1(f"{ret}, = self.{true_block_name}({true_branch_input_names})"),
-            self.Indent0(f"else:"),
+            self.Indent0(lambda f: f"if {f(cond_name)}:"),
             self.Indent1(
-                f"{ret}, = self.{false_block_name}({false_branch_input_names})"
+                lambda f: f"{ret(f)}, = self.{true_block_name}({true_branch_input_names(f)})"
+            ),
+            self.Indent0(lambda f: f"else:"),
+            self.Indent1(
+                lambda f: f"{ret(f)}, = self.{false_block_name}({false_branch_input_names(f)})"
             ),
         ]
 
-    def Indent0(self, pycode):
+    def Indent0(self, pycode: Callable[Callable[str, str], str]):
+        assert callable(pycode)
         return IndentedPyCode(pycode=pycode, num_tabs=0)
 
-    def Indent1(self, pycode):
+    def Indent1(self, pycode: Callable[Callable[str, str], str]):
+        assert callable(pycode)
         return IndentedPyCode(pycode=pycode, num_tabs=1)
 
-    def Indent2(self, pycode):
+    def Indent2(self, pycode: Callable[Callable[str, str], str]):
+        assert callable(pycode)
         return IndentedPyCode(pycode=pycode, num_tabs=2)
 
     def CollectPyCodeStmt(self, GetStmtPyCode, op, *input_tensors, **kwargs):
@@ -233,14 +250,15 @@ class PaddleFuncBodyGenerator:
         self, local_output_tensor_names, op, *input_local_tensors, **kwargs
     ):
         assert len(kwargs) == 0
-        local_output_unpack_str = ", ".join(local_output_tensor_names)
+        local_output_unpack_str = fn.join_map(local_output_tensor_names)
         local_op_call_expr = self.op_call_generator.GenerateOpCall(
             op, *input_local_tensors
         )
         if local_op_call_expr is None:
             return []
-        elif len(local_output_tensor_names) == 0:
-            pycode = f"{local_op_call_expr}"
-        else:
-            pycode = f"{local_output_unpack_str} = {local_op_call_expr}"
+        pycode = (
+            local_op_call_expr
+            if len(local_output_tensor_names) == 0
+            else lambda f: f"{local_output_unpack_str(f)} = {local_op_call_expr(f)}"
+        )
         return [IndentedPyCode(pycode=pycode, num_tabs=0)]

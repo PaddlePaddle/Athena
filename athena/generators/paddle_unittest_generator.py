@@ -93,6 +93,7 @@ def RenderTemplate(
         output_arg_names=[tensor.name for tensor in output_tensors],
         input_tensor_descs=input_tensor_descs,
         input_spec_shape_dtypes=input_spec_shape_dtypes,
+        tensor_name_converter=lambda x: x,
     )
 
 

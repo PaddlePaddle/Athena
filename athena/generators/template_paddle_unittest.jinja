@@ -80,11 +80,11 @@ class {{unittest_class_name}}(paddle.nn.Layer):
 
         {%- for pycode in stmt.pycode %}
         {%- if pycode.num_tabs == 0 %}
-        {{pycode.pycode}}
+        {{pycode.pycode(tensor_name_converter)}}
         {%- elif pycode.num_tabs == 1 %}
-            {{pycode.pycode}}
+            {{pycode.pycode(tensor_name_converter)}}
         {%- elif pycode.num_tabs == 2 %}
-                {{pycode.pycode}}
+                {{pycode.pycode(tensor_name_converter)}}
         {%- else %}
         raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
         {%- endif %}
