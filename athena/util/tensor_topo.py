@@ -87,6 +87,7 @@ def GetOpId2TensorNamesUsedByMeAndDownstream(
     block_op_calls = BlockOpCallsExtractor().Extract(func, free_vars, args)
     for op_call in block_op_calls.input_op_calls:
         op_id2used[op_call.op.op_id] = [get_local_name(t) for t in input_tensors]
+    assert len(block_op_calls.body_op_calls) == len(in_out_names_sigs)
     for i, in_out_names_sig in enumerate(in_out_names_sigs):
         all_input_names_used_by_me_and_downstream = _GetAllInputNamesUsedByDownStream(
             in_out_names_sigs, i

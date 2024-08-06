@@ -25,11 +25,11 @@ class IndentedPyCode:
 
 @dataclass
 class PyCodeStmt:
-    op_name: str
-    op_id: int
+    op: 'Op'
     op_unique_local_name: str
     pycode: List[IndentedPyCode]
     input_tensor_names: List[str]
+    output_tensor_names: List[str]
     inputs_type_strs: List[str]
     outputs_type_strs: List[str]
     inputs_shape_symbol_strs: List[str]
@@ -37,7 +37,16 @@ class PyCodeStmt:
     inputs_data_symbol_strs: List[str]
     outputs_data_symbol_strs: List[str]
     tensors_used_by_me_and_downstream: List[str]
+    tensors_used_by_downstream: List[str]
     op_func_in_out_names_signature: OpPipeInOutNamesSignature
+
+    @property
+    def op_name(self):
+        return self.op.name
+
+    @property
+    def op_id(self):
+        return self.op.op_id
 
 
 class PaddleFuncBodyGenerator:
@@ -53,8 +62,22 @@ class PaddleFuncBodyGenerator:
         self.op_name_generator = NameGenerator()
         self.op_id2used_by_me_and_downstream = {}
         self.output_local_tensors = []
+        self.block_op_calls = []
+        self.body_op_id2op_index = {}
 
     def Generate(self, free_vars, args):
+        input_tensors, output_tensors = self.input_output_tensors_extractor.Extract(
+            free_vars, args
+        )
+        input_local_tensors = [
+            self.tensor_converter.ConvertToLocalTensor(tensor)
+            for tensor in input_tensors
+        ]
+        self.output_local_tensors = [
+            self.tensor_converter.ConvertToLocalTensor(tensor)
+            for tensor in output_tensors
+        ]
+
         def get_local_name(tensor):
             if tensor is None:
                 return None
@@ -66,21 +89,19 @@ class PaddleFuncBodyGenerator:
         self.op_id2op_func_in_out_names_signature = GetOpId2OpPipeInOutNamesSignature(
             self.func, free_vars, args, get_local_name
         )
-        block_op_calls = BlockOpCallsExtractor().Extract(self.func, free_vars, args)
-        for op_call in block_op_calls.body_op_calls:
+        self.block_op_calls = BlockOpCallsExtractor().Extract(self.func, free_vars, args)
+        for index, op_call in enumerate(self.block_op_calls.body_op_calls):
+            self.body_op_id2op_index[op_call.op.op_id] = index
+        for op_call in self.block_op_calls.body_op_calls:
             self(op_call.op, *op_call.input_tensors, **op_call.kwargs)
-        input_tensors, output_tensors = self.input_output_tensors_extractor.Extract(
-            free_vars, args
-        )
-        input_local_tensors = [
-            self.tensor_converter.ConvertToLocalTensor(tensor)
-            for tensor in input_tensors
-        ]
-        output_local_tensors = [
-            self.tensor_converter.ConvertToLocalTensor(tensor)
-            for tensor in output_tensors
-        ]
-        return input_local_tensors, self.stmts, output_local_tensors
+        return input_local_tensors, self.stmts, self.output_local_tensors
+
+    def GetTensorNamesUsedByDownstream(self, op_id):
+        op_index = self.body_op_id2op_index[op_id]
+        if (op_index + 1) == len(self.block_op_calls.body_op_calls):
+            return [tensor.name for tensor in self.output_local_tensors]
+        next_op_id = self.block_op_calls.body_op_calls[op_index + 1].op.op_id
+        return self.op_id2used_by_me_and_downstream[next_op_id]
 
     def __call__(self, op, *input_tensors, **kwargs):
         op_py_varname = op.GetPyVarName()
@@ -222,13 +243,13 @@ class PaddleFuncBodyGenerator:
 
         self.stmts.append(
             PyCodeStmt(
-                op_name=op.name,
-                op_id=op.op_id,
+                op=op,
                 op_unique_local_name=self.op_name_generator.Generate(
                     key=op.op_id,
                     prefix=f"op_{op.GetNameSuffix()}",
                 ),
                 input_tensor_names=[GetTensorName(t) for t in input_local_tensors],
+                output_tensor_names=local_output_tensor_names,
                 inputs_type_strs=inputs_type_strs,
                 outputs_type_strs=outputs_type_strs,
                 inputs_shape_symbol_strs=inputs_shape_symbol_strs,
@@ -239,6 +260,7 @@ class PaddleFuncBodyGenerator:
                 tensors_used_by_me_and_downstream=self.op_id2used_by_me_and_downstream[
                     op.op_id
                 ],
+                tensors_used_by_downstream=self.GetTensorNamesUsedByDownstream(op.op_id),
                 op_func_in_out_names_signature=self.op_id2op_func_in_out_names_signature[
                     op.op_id
                 ],
