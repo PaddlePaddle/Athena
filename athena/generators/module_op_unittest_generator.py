@@ -110,6 +110,7 @@ class ModuleOpUnittestGenerator:
         return template.render(
             blocks=blocks,
             enable_early_return=self.EnableEarlyReturn(),
+            tensor_name_converter=lambda x: x,
         )
 
     def EnableEarlyReturn(self):

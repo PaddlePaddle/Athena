@@ -4,7 +4,7 @@ from athena.generators.paddle_op_call_generator import PaddleOpCallGenerator
 from athena.generators.global_tensor_converter import GlobalTensorConverter
 from athena.util.name_generator import NameGenerator
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Union, Callable
 from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.tensor_topo import (
     GetOpId2TensorNamesUsedByMeAndDownstream,
@@ -14,21 +14,22 @@ from athena.util.tensor_topo import (
 from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
 from athena.util.block_op_calls_extractor import BlockOpCallsExtractor
+import athena.util.lambda_util as fn
 
 
 @dataclass
 class IndentedPyCode:
-    pycode: str
+    pycode: Callable[Callable[str, str], str]
     num_tabs: int
 
 
 @dataclass
 class PyCodeStmt:
-    op_name: str
-    op_id: int
+    op: "Op"
     op_unique_local_name: str
     pycode: List[IndentedPyCode]
     input_tensor_names: List[str]
+    output_tensor_names: List[str]
     inputs_type_strs: List[str]
     outputs_type_strs: List[str]
     inputs_shape_symbol_strs: List[str]
@@ -36,7 +37,16 @@ class PyCodeStmt:
     inputs_data_symbol_strs: List[str]
     outputs_data_symbol_strs: List[str]
     tensors_used_by_me_and_downstream: List[str]
+    tensors_used_by_downstream: List[str]
     op_func_in_out_names_signature: OpPipeInOutNamesSignature
+
+    @property
+    def op_name(self):
+        return self.op.name
+
+    @property
+    def op_id(self):
+        return self.op.op_id
 
 
 class PaddleFuncBodyGenerator:
@@ -52,8 +62,22 @@ class PaddleFuncBodyGenerator:
         self.op_name_generator = NameGenerator()
         self.op_id2used_by_me_and_downstream = {}
         self.output_local_tensors = []
+        self.block_op_calls = []
+        self.body_op_id2op_index = {}
 
     def Generate(self, free_vars, args):
+        input_tensors, output_tensors = self.input_output_tensors_extractor.Extract(
+            free_vars, args
+        )
+        input_local_tensors = [
+            self.tensor_converter.ConvertToLocalTensor(tensor)
+            for tensor in input_tensors
+        ]
+        self.output_local_tensors = [
+            self.tensor_converter.ConvertToLocalTensor(tensor)
+            for tensor in output_tensors
+        ]
+
         def get_local_name(tensor):
             if tensor is None:
                 return None
@@ -65,21 +89,21 @@ class PaddleFuncBodyGenerator:
         self.op_id2op_func_in_out_names_signature = GetOpId2OpPipeInOutNamesSignature(
             self.func, free_vars, args, get_local_name
         )
-        block_op_calls = BlockOpCallsExtractor().Extract(self.func, free_vars, args)
-        for op_call in block_op_calls.body_op_calls:
-            self(op_call.op, *op_call.input_tensors, **op_call.kwargs)
-        input_tensors, output_tensors = self.input_output_tensors_extractor.Extract(
-            free_vars, args
+        self.block_op_calls = BlockOpCallsExtractor().Extract(
+            self.func, free_vars, args
         )
-        input_local_tensors = [
-            self.tensor_converter.ConvertToLocalTensor(tensor)
-            for tensor in input_tensors
-        ]
-        output_local_tensors = [
-            self.tensor_converter.ConvertToLocalTensor(tensor)
-            for tensor in output_tensors
-        ]
-        return input_local_tensors, self.stmts, output_local_tensors
+        for index, op_call in enumerate(self.block_op_calls.body_op_calls):
+            self.body_op_id2op_index[op_call.op.op_id] = index
+        for op_call in self.block_op_calls.body_op_calls:
+            self(op_call.op, *op_call.input_tensors, **op_call.kwargs)
+        return input_local_tensors, self.stmts, self.output_local_tensors
+
+    def GetTensorNamesUsedByDownstream(self, op_id):
+        op_index = self.body_op_id2op_index[op_id]
+        if (op_index + 1) == len(self.block_op_calls.body_op_calls):
+            return [tensor.name for tensor in self.output_local_tensors]
+        next_op_id = self.block_op_calls.body_op_calls[op_index + 1].op.op_id
+        return self.op_id2used_by_me_and_downstream[next_op_id]
 
     def __call__(self, op, *input_tensors, **kwargs):
         op_py_varname = op.GetPyVarName()
@@ -94,8 +118,9 @@ class PaddleFuncBodyGenerator:
         return self.CollectPyCodeStmt(get_stmts, op, *input_tensors, **kwargs)
 
     def get_stmts_builtin_split(self, local_output_tensor_names, op, x):
-        output_unpack_str = ", ".join(local_output_tensor_names)
-        return [self.Indent0(f"{output_unpack_str}, = {x.name}")]
+        x_name = x.name
+        output_unpack_str = fn.join_map(local_output_tensor_names)
+        return [self.Indent0(lambda f: f"{output_unpack_str(f)}, = {f(x_name)}")]
 
     def get_stmts_pd_op_while(
         self,
@@ -107,27 +132,32 @@ class PaddleFuncBodyGenerator:
         block_func, *free_vars = kwargs["blocks"][0][0]
         cond, *args = local_input_tensors
         free_vars = [self.tensor_converter.ConvertToLocalTensor(t) for t in free_vars]
-        output_unpack_str = ", ".join(local_output_tensor_names)
-        input_var_str = ", ".join(t.name for t in local_input_tensors)
+        output_unpack_str = fn.join_map(local_output_tensor_names)
+        input_var_str = fn.join_map([t.name for t in local_input_tensors])
         block_name = BlockNameGenerator().Generate(op, region_idx=0, block_idx=0)
-        block_args_str = ", ".join(t.name for t in [*free_vars, *args])
-        arg_str = ", ".join(t.name for t in args)
+        block_args_str = fn.join_map([t.name for t in [*free_vars, *args]])
+        arg_str = fn.join_map([t.name for t in args])
+        cond_name = cond.name
         return [
-            self.Indent0(f"import os"),
+            self.Indent0(lambda f: f"import os"),
             self.Indent0(
-                f"ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
+                lambda f: f"ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
             ),
             self.Indent0(
-                f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
+                lambda f: f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
             ),
-            self.Indent0(f"while_loop_counter_{op.op_id} = 0"),
-            self.Indent0(f"while {cond.name}:"),
-            self.Indent1(f"{input_var_str}, = self.{block_name}({block_args_str})"),
-            self.Indent1(f"while_loop_counter_{op.op_id} += 1"),
-            self.Indent1(f"if while_loop_counter_{op.op_id} > kWhileLoopLimit:"),
-            self.Indent2(f"break"),
-            self.Indent1(f""),
-            self.Indent0(f"{output_unpack_str}, = {arg_str},"),
+            self.Indent0(lambda f: f"while_loop_counter_{op.op_id} = 0"),
+            self.Indent0(lambda f: f"while {f(cond_name)}:"),
+            self.Indent1(
+                lambda f: f"{input_var_str(f)}, = self.{block_name}({block_args_str(f)})"
+            ),
+            self.Indent1(lambda f: f"while_loop_counter_{op.op_id} += 1"),
+            self.Indent1(
+                lambda f: f"if while_loop_counter_{op.op_id} > kWhileLoopLimit:"
+            ),
+            self.Indent2(lambda f: f"break"),
+            self.Indent1(lambda f: f""),
+            self.Indent0(lambda f: f"{output_unpack_str(f)}, = {arg_str(f)},"),
         ]
 
     def get_stmts_pd_op_if(
@@ -139,35 +169,45 @@ class PaddleFuncBodyGenerator:
     ):
         _, *true_branch_free_vars = kwargs["blocks"][0][0]
         _, *false_branch_free_vars = kwargs["blocks"][1][0]
-        true_branch_input_names = ", ".join(
-            local_tensor.name
-            for t in true_branch_free_vars
-            for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+        true_branch_input_names = fn.join_map(
+            [
+                local_tensor.name
+                for t in true_branch_free_vars
+                for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+            ]
         )
-        false_branch_input_names = ", ".join(
-            local_tensor.name
-            for t in false_branch_free_vars
-            for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+        false_branch_input_names = fn.join_map(
+            [
+                local_tensor.name
+                for t in false_branch_free_vars
+                for local_tensor in [self.tensor_converter.ConvertToLocalTensor(t)]
+            ]
         )
-        ret = ", ".join(local_output_tensor_names)
+        ret = fn.join_map(local_output_tensor_names)
         true_block_name = BlockNameGenerator().Generate(op, region_idx=0, block_idx=0)
         false_block_name = BlockNameGenerator().Generate(op, region_idx=1, block_idx=0)
+        cond_name = cond.name
         return [
-            self.Indent0(f"if {cond.name}:"),
-            self.Indent1(f"{ret}, = self.{true_block_name}({true_branch_input_names})"),
-            self.Indent0(f"else:"),
+            self.Indent0(lambda f: f"if {f(cond_name)}:"),
             self.Indent1(
-                f"{ret}, = self.{false_block_name}({false_branch_input_names})"
+                lambda f: f"{ret(f)}, = self.{true_block_name}({true_branch_input_names(f)})"
+            ),
+            self.Indent0(lambda f: f"else:"),
+            self.Indent1(
+                lambda f: f"{ret(f)}, = self.{false_block_name}({false_branch_input_names(f)})"
             ),
         ]
 
-    def Indent0(self, pycode):
+    def Indent0(self, pycode: Callable[Callable[str, str], str]):
+        assert callable(pycode)
         return IndentedPyCode(pycode=pycode, num_tabs=0)
 
-    def Indent1(self, pycode):
+    def Indent1(self, pycode: Callable[Callable[str, str], str]):
+        assert callable(pycode)
         return IndentedPyCode(pycode=pycode, num_tabs=1)
 
-    def Indent2(self, pycode):
+    def Indent2(self, pycode: Callable[Callable[str, str], str]):
+        assert callable(pycode)
         return IndentedPyCode(pycode=pycode, num_tabs=2)
 
     def CollectPyCodeStmt(self, GetStmtPyCode, op, *input_tensors, **kwargs):
@@ -205,13 +245,13 @@ class PaddleFuncBodyGenerator:
 
         self.stmts.append(
             PyCodeStmt(
-                op_name=op.name,
-                op_id=op.op_id,
+                op=op,
                 op_unique_local_name=self.op_name_generator.Generate(
                     key=op.op_id,
                     prefix=f"op_{op.GetNameSuffix()}",
                 ),
                 input_tensor_names=[GetTensorName(t) for t in input_local_tensors],
+                output_tensor_names=local_output_tensor_names,
                 inputs_type_strs=inputs_type_strs,
                 outputs_type_strs=outputs_type_strs,
                 inputs_shape_symbol_strs=inputs_shape_symbol_strs,
@@ -222,6 +262,9 @@ class PaddleFuncBodyGenerator:
                 tensors_used_by_me_and_downstream=self.op_id2used_by_me_and_downstream[
                     op.op_id
                 ],
+                tensors_used_by_downstream=self.GetTensorNamesUsedByDownstream(
+                    op.op_id
+                ),
                 op_func_in_out_names_signature=self.op_id2op_func_in_out_names_signature[
                     op.op_id
                 ],
@@ -233,14 +276,15 @@ class PaddleFuncBodyGenerator:
         self, local_output_tensor_names, op, *input_local_tensors, **kwargs
     ):
         assert len(kwargs) == 0
-        local_output_unpack_str = ", ".join(local_output_tensor_names)
+        local_output_unpack_str = fn.join_map(local_output_tensor_names)
         local_op_call_expr = self.op_call_generator.GenerateOpCall(
             op, *input_local_tensors
         )
         if local_op_call_expr is None:
             return []
-        elif len(local_output_tensor_names) == 0:
-            pycode = f"{local_op_call_expr}"
-        else:
-            pycode = f"{local_output_unpack_str} = {local_op_call_expr}"
+        pycode = (
+            local_op_call_expr
+            if len(local_output_tensor_names) == 0
+            else lambda f: f"{local_output_unpack_str(f)} = {local_op_call_expr(f)}"
+        )
         return [IndentedPyCode(pycode=pycode, num_tabs=0)]

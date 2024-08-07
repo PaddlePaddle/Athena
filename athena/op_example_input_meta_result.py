@@ -8,6 +8,7 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_string("input_file_prefix", "tmp_op_example_input_", "input file prefix")
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
+flags.DEFINE_string("output", "", "output file.")
 flags.DEFINE_string("input_dir", "./input-dir", "input directory.")
 flags.DEFINE_string("tmp_dir", "./tmp-dir", "tmp directory.")
 flags.DEFINE_integer("max_infer_try_cnt", 10, "max infer try cnt")
@@ -31,10 +32,15 @@ def main(argv):
         System(
             f"ATHENA_WHILE_LOOP_LIMIT={FLAGS.while_loop_limit} {sys.executable} {pyfile} --max_try_cnt={FLAGS.max_infer_try_cnt} --output_file={output_file}"
         )
-    concated_out = f"{FLAGS.output_dir}/op_example_input_meta_result.py"
-    System(
-        f"cat {FLAGS.output_dir}/result_{FLAGS.input_file_prefix}*.py 2>/dev/null | tee {concated_out}"
+    concated_out_file = (
+        FLAGS.output
+        if FLAGS.output != ""
+        else f"{FLAGS.output_dir}/op_example_input_meta_result.py"
     )
+    System(
+        f"cat {FLAGS.output_dir}/result_{FLAGS.input_file_prefix}*.py 2>/dev/null | tee {concated_out_file}"
+    )
+    print(f"# dump op example input meta into {concated_out_file}")
 
 
 def System(cmd):

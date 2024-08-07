@@ -1,0 +1,1 @@
+python3.9 -m athena.op_example_input_tensor_meta --ir_programs=./example_exec_programs.py --example_inputs=./example_programs_example_input_tensor_meta.py  --tmp_dir=/tmp --output=/tmp/op_example_input_tensor_meta.py

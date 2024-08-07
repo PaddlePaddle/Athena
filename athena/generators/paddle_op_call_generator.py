@@ -1,8 +1,12 @@
 import athena.ir.ir_attr as ir_attr
 import athena.ir.ir_type as ir_type
-from athena.generators.paddle_c_ops_arg_names import GetCOpsArgNames
+from athena.generators.paddle_c_ops_arg_names import (
+    GetCOpsArgNames,
+    GetTypeNameByArgName,
+)
 import sys
 import os
+import athena.util.lambda_util as fn
 
 
 class GSOutputDimGenerator:
@@ -104,20 +108,35 @@ class GSOutputDimGenerator:
 class CinnOpCallGenerator:
 
     def cinn_op_yield_store(self, op, x):
-        return f"{x.name},"
+        return lambda f: f"{f(x.name)},"
 
     def cinn_op_concat(self, op, *inputs):
-        operands = ", ".join([input.name for input in inputs])
-        return f"{self.m}.concat([{operands}], axis={op.attrs['axis']})"
+        operands = fn.join_map([input.name for input in inputs])
+        return lambda f: f"{self.m}.concat([{operands(f)}], axis={op.attrs['axis']})"
 
     def cinn_op_slice(self, op, x):
-        return f"{self.m}.slice({x.name}, axes={op.attrs['axes']}, starts={op.attrs['starts']}, ends={op.attrs['ends']})"
+        return (
+            lambda f: f"{self.m}.slice({f(x.name)}, axes={op.attrs['axes']}, starts={op.attrs['starts']}, ends={op.attrs['ends']})"
+        )
 
     def cinn_op_reduce_sum(self, op, x):
-        return f"{self.m}.sum({x.name}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
+        return (
+            lambda f: f"{self.m}.sum({f(x.name)}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
+        )
 
     def cinn_op_reduce_prod(self, op, x):
-        return f"{self.m}.prod({x.name}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
+        return (
+            lambda f: f"{self.m}.prod({f(x.name)}, keepdim={op.attrs['keep_dim']}, axis={op.attrs['dim']})"
+        )
+
+    def cinn_op_scale(self, op, x):
+        return lambda f: f"{f(x.name)} * {op.attrs['scale']} + {op.attrs['bias']}"
+
+    def cinn_op_broadcast(self, op, x):
+        return lambda f: f"{self.m}.broadcast_to({f(x.name)}, {op.attrs['out_shape']})"
+
+    def cinn_op_reshape(self, op, x):
+        return lambda f: f"{self.m}.reshape({f(x.name)}, {op.attrs['shape']})"
 
     def cinn_op_generate_shape(self, op, *inputs):
         generator = GSOutputDimGenerator(
@@ -131,8 +150,8 @@ class CinnOpCallGenerator:
                 for dim_expr in op.base_op.attrs["output_dim_exprs"].value
             ]
         )
-        input_args = ", ".join([input.name for input in inputs])
-        return f"[{output_dims}] # inputs: {input_args}"
+        input_args = fn.join_map([input.name for input in inputs])
+        return lambda f: f"[{output_dims}] # inputs: {input_args(f)}"
 
 
 class PaddleOpCallGenerator(CinnOpCallGenerator):
@@ -142,9 +161,11 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
 
     def let(self, args_value_pair, body):
         args, value = args_value_pair
+        assert callable(value)
+        assert callable(body)
         if isinstance(args, (list, tuple)):
             args = ", ".join(args)
-        return f"(lambda x, f: f(x))({value}, lambda {args}: {body})"
+        return lambda f: f"(lambda x, f: f(x))({value(f)}, lambda {args}: {body(f)})"
 
     def GenerateOpCall(self, op, *inputs):
         method_name = op.GetPyVarName()
@@ -195,24 +216,33 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
         arg_names = GetCOpsArgNames(op_name)
         pos_arg_idx = -1
 
-        def GetPosArgVarName():
+        def GetPosArgVarName(arg_name):
             nonlocal pos_arg_idx
             pos_arg_idx += 1
             t = inputs[pos_arg_idx]
-            if isinstance(t, str):
+            assert not isinstance(t, str)
+            if callable(t):
                 return t
             if t is None:
-                return "None"
+                return lambda f: "None"
             if isinstance(t.type, ir_type.NullType):
-                return "None"
-            return t.name
+                return lambda f: "None"
+            type_name = GetTypeNameByArgName(op_name, arg_name)
+            t_name = t.name
+            if type_name == "IntArray" and isinstance(t.type, ir_type.VectorType):
+                return lambda f: f"[x.reshape([]) for x in {f(t_name)}]"
+            return lambda f: f(t_name)
 
         m = f"{self.m}._C_ops"
         args = [
-            attrs[arg_name] if arg_name in attrs else GetPosArgVarName()
+            (
+                fn.const(attrs[arg_name])
+                if arg_name in attrs
+                else GetPosArgVarName(arg_name)
+            )
             for arg_name in arg_names
         ]
-        args_str = ", ".join(args)
+        args_str = fn.join_map(args)
 
         def GetMethodName():
             inplace = (op_name is not None) and (
@@ -223,12 +253,14 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
                 return f"{op_name}_"
             return op_name
 
-        out = f"{m}.{GetMethodName()}({args_str})"
+        method_name = GetMethodName()
+        out = lambda f: f"{m}.{method_name}({args_str(f)})"
         if len(op.output_types) <= 1:
             return out
         nones = ",".join("None" for i in range(len(op.output_types) - 1))
         return self.let(
-            ("out", out), f"out if isinstance(out, (list, tuple)) else (out, {nones})"
+            ("out", out),
+            lambda f: f"out if isinstance(out, (list, tuple)) else (out, {nones})",
         )
 
     def EnableFallbackFromInplace(self):
@@ -241,42 +273,35 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
         }
 
     def pd_op_arange(self, op, start, end, stop):
+        start_name = start.name
+        end_name = end.name
+        stop_name = stop.name
         dtype = op.attrs["dtype"].split(".")[-1]
         return (
-            f"{self.m}.arange({start.name}, {end.name}, {stop.name}, dtype='{dtype}')"
+            lambda f: f"{self.m}.arange({f(start_name)}, {f(end_name)}, {f(stop_name)}, dtype='{dtype}')"
         )
 
     def pd_op_one_hot(self, op, x, num_classes):
-        N = f"{self.m}.cast({num_classes.name}, {x.name}.dtype)"
-        return f"{self.m}._C_ops.one_hot({x.name} % {N}, {num_classes.name})"
+        x_name = x.name
+        num_classes_name = num_classes.name
+        N = lambda f: f"{self.m}.cast({f(num_classes_name)}, {f(x_name)}.dtype)"
+        return (
+            lambda f: f"{self.m}._C_ops.one_hot({f(x_name)} % {N(f)}, {f(num_classes_name)})"
+        )
 
     def pd_op_assign(self, op, x):
-        return x.name
+        return lambda f: f(x.name)
 
     def pd_op_assign_value(self, op):
         shape = op.attrs["shape"]
         values = op.attrs["values"]
         dtype = op.attrs["dtype"]
-        return f"{self.m}.to_tensor({values}, dtype={dtype}).reshape({shape})"
-
-    def pd_op_sigmoid(self, op, x):
-        return f"{self.m}.nn.functional.sigmoid({x.name})"
-
-    def pd_op_set_value_(self, op, x, starts, ends, steps):
-        return f"{self.m}._C_ops.set_value_({x.name}, {starts.name}, {ends.name}, {steps.name}, {op.attrs['axes']}, {op.attrs['decrease_axes']}, {op.attrs['none_axes']}, {op.attrs['shape']}, {op.attrs['values']})"
-
-    def pd_op_gather_nd(self, op, x, index):
-        return f"{self.m}.gather_nd({x.name}, {index.name})"
-
-    def pd_op_subtract(self, op, x, y):
-        return f"{x.name} - {y.name}"
-
-    def pd_op_rsqrt(self, op, x):
-        return f"{self.m}.rsqrt({x.name})"
+        return lambda f: f"{self.m}.to_tensor({values}, dtype={dtype}).reshape({shape})"
 
     def pd_op_shape(self, op, input):
+        input_name = input.name
         if isinstance(input.dtype, ir_type.Float16Type):
-            input = f"{self.m}.cast({input.name}, 'float32')"
+            input = lambda f: f"{self.m}.cast({f(input_name)}, 'float32')"
         return self.GenerateCOpsCall(op, [input])
 
     def cf_yield(self, op, *inputs):
@@ -297,82 +322,36 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
     def pd_op_feed(self, op):
         return None
 
-    def pd_op_elementwise_pow(self, op, x, y):
-        return f"{self.m}.pow({x.name}, {y.name})"
-
     def builtin_combine(self, op, *inputs):
-        operands = ", ".join([input.name for input in inputs])
-        return f"[{operands}]"
+        input_names = [input.name for input in inputs]
+        return lambda f: f"[{', '.join(f(input_name) for input_name in input_names)}]"
 
     def builtin_slice(self, op, x):
         index = op.attrs["index"]
-        return f"{x.name}[{index}]"
+        return lambda f: f"{f(x.name)}[{index}]"
 
     def builtin_split(self, op, x):
-        return x.name
+        return lambda f: f(x.name)
 
-    def pd_op_matmul(self, op, x, y):
-        return f"{self.m}.matmul({x.name}, {y.name}, transpose_x={op.attrs['transpose_x']}, transpose_y={op.attrs['transpose_y']})"
+    def pd_op_set_value_(self, op, x, starts, ends, steps):
+        return (
+            lambda f: f"{self.m}._C_ops.set_value_({f(x.name)}, {f(starts.name)}, {f(ends.name)}, {f(steps.name)}, {op.attrs['axes']}, {op.attrs['decrease_axes']}, {op.attrs['none_axes']}, {op.attrs['shape']}, {op.attrs['values']})"
+        )
 
     def pd_op_share_data_(self, op, x):
-        return f"{x.name}.detach()"
+        return lambda f: f"{f(x.name)}.detach()"
 
     def pd_op_full_int_array(self, op):
-        return op.attrs["value"]
-
-    def pd_op_sqrt(self, op, x):
-        return f"{self.m}.sqrt({x.name})"
-
-    def pd_op_add(self, op, x, y):
-        return f"{x.name} + {y.name}"
-
-    def pd_op_multiply(self, op, x, y):
-        return f"{x.name} * {y.name}"
-
-    def pd_op_divide(self, op, x, y):
-        return f"{x.name} / {y.name}"
-
-    def pd_op_greater_than(self, op, x, y):
-        return f"{x.name} > {y.name}"
-
-    def pd_op_less_than(self, op, x, y):
-        return f"{x.name} < {y.name}"
-
-    def pd_op_logical_and(self, op, x, y):
-        return f"{self.m}.logical_and({x.name}, {y.name})"
-
-    def pd_op_maximum(self, op, x, y):
-        return f"{self.m}.maximum({x.name}, {y.name})"
-
-    def cinn_op_scale(self, op, x):
-        return f"{x.name} * {op.attrs['scale']} + {op.attrs['bias']}"
-
-    def cinn_op_broadcast(self, op, x):
-        return f"{self.m}.broadcast_to({x.name}, {op.attrs['out_shape']})"
-
-    def cinn_op_reshape(self, op, x):
-        return f"{self.m}.reshape({x.name}, {op.attrs['shape']})"
-
-    def pd_op_sin(self, op, x):
-        return f"{self.m}.sin({x.name})"
-
-    def pd_op_erf(self, op, x):
-        return f"{self.m}.erf({x.name})"
-
-    def pd_op_cos(self, op, x):
-        return f"{self.m}.cos({x.name})"
+        return lambda f: op.attrs["value"]
 
     def pd_op_batch_norm_(self, op, *inputs):
         return self.GenerateCOpsCall(op, inputs, op_name="batch_norm")
 
     def pd_op_rnn_(self, op, *inputs):
         outs = self.GenerateCOpsCall(op, inputs, op_name="rnn")
-        return f"{outs} + (None,)"
-
-    def pd_op_slice(self, op, *inputs):
-        if op.attrs["decrease_axis"] == "[0]" and op.output_types[0].shape == [1]:
-            op.attrs["decrease_axis"] = "[]"
-        return self.GenerateCOpsCall(op, inputs)
+        return lambda f: f"{outs(f)} + (None,)"
 
     def pd_op_select_input(self, op, cond, elem0, elem1):
-        return f"({elem0.name} if {cond.name} == 0 else {elem1.name})"
+        return (
+            lambda f: f"({f(elem0.name)} if {f(cond.name)} == 0 else {f(elem1.name)})"
+        )

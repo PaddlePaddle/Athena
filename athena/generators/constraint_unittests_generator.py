@@ -426,6 +426,7 @@ class ConstraintUnittestsGenerator:
             is_cached_before=lambda x: x in cached_test_class_names,
             cache=lambda x: empty_str(cached_test_class_names.add(x)),
             PADDLE_DEBUG_ENABLE_CINN=PADDLE_DEBUG_ENABLE_CINN,
+            tensor_name_converter=lambda x: x,
         )
 
     def GetCppOperandTypeName(self, op, input_idx):

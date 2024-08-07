@@ -3,6 +3,7 @@ from athena.ir_converters.paddle_op_converter import ConvertToPaddleOp
 from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
 from athena.ir_converters.paddle_type_converter import ConvertTypeToString
 from athena.generators.paddle_op_call_generator import PaddleOpCallGenerator
+from athena.generators.paddle_func_body_generator import PyCodeStmt
 import typing as t
 from athena.util.input_tensor_desc import InputTensorDesc, MakeInputTensorDesc
 import athena.ir.ir_type as ir_type
@@ -10,172 +11,113 @@ import athena.ir.ir_tensor as ir_tensor
 import athena.ir.ir_symbol as ir_symbol
 from collections import namedtuple
 import os
-from jinja2 import Template
+import jinja2
+
 import hashlib
 from athena.generators.paddle_c_ops_arg_names import op_name2args
 import typing as t
 import random
-
-InputSpecDesc = namedtuple(
-    "InputSpecDesc",
-    [
-        "shape",
-        "dtype",
-    ],
+from athena.util.ops_func_signature import (
+    InputSpecDesc,
+    TensorId,
+    NullTensorId,
+    OperandTensorId,
+    TensorListMemberId,
+    OperandId,
+    OpsFuncSignature,
 )
+from collections import OrderedDict, defaultdict
+import itertools
 
 
 @dataclass
-class TensorId:
-    pass
+class SequenceFuncDesc:
+    ops_func_signature: OpsFuncSignature
+    output_tensor_names: t.List[str]
+    seq_stmts: t.List[PyCodeStmt]
+    get_unused_tensor_name: t.Callable[PyCodeStmt, t.List[str]]
 
 
-@dataclass
-class NullTensorId(TensorId):
-    pass
+class SequenceUnittestsGenerator:
 
-
-@dataclass
-class OperandTensorId(TensorId):
-    operand_tensor_idx: int
-
-
-@dataclass
-class TensorListMemberId(TensorId):
-    operand_tensor_list_idx: int
-    tensor_list_member_idx: int
-
-
-@dataclass
-class OperandId:
-    operand_idx: int
-
-    def get_operand_tensor_id(self, op: "Op") -> t.Optional[OperandTensorId]:
-        input_type = op.input_types[self.operand_idx]
-        if not isinstance(input_type, ir_type.DenseTensorType):
-            return None
-        return OperandTensorId(self.operand_idx)
-
-    def get_null_tensor_id(self, op: "Op") -> t.Optional[NullTensorId]:
-        input_type = op.input_types[self.operand_idx]
-        if not isinstance(input_type, ir_type.NullType):
-            return None
-        return NullTensorId()
-
-    def get_tensor_list_member_ids(
-        self, op: "Op"
-    ) -> t.Optional[t.List[TensorListMemberId]]:
-        input_type = op.input_types[self.operand_idx]
-        if not isinstance(input_type, ir_type.VectorType):
-            return None
-        return [
-            TensorListMemberId(
-                operand_tensor_list_idx=self.operand_idx,
-                tensor_list_member_idx=i,
-            )
-            for i in range(len(input_type.value))
-        ]
-
-
-@dataclass
-class PrimitiveOpStmt:
-    op_expr: str
-    tensor_ids: t.List[TensorId]
-    operand_ids: t.List[OperandId]
-    operand_tensor_id4operand_id: t.Callable[OperandId, t.Optional[OperandTensorId]]
-    null_tensor_id4operand_id: t.Callable[OperandId, t.Optional[NullTensorId]]
-    tensor_list_member_ids4operand_id: t.Callable[
-        OperandId, t.Optional[t.List[TensorListMemberId]]
-    ]
-    tensor_name4tensor_id: t.Callable[TensorId, str]
-    tensor_name4operand_id: t.Callable[OperandId, str]
-    input_spec_shape_dtype4tensor_id: t.Callable[TensorId, InputSpecDesc]
-    example_input_meta4tensor_id: t.Callable[TensorId, InputTensorDesc]
-    example_input_data4operand_id: t.Callable[OperandId, t.Optional[t.List[int]]]
-    immediate_value4operand_id: t.Callable[[OperandId, t.Any], t.Any]
-    immediate_value4int_array_member_id: t.Callable[[TensorId, t.Any], t.Any]
-
-
-class PrimitiveOpUnittestsGenerator:
-
-    def __init__(self, input_spec_mode, op_example_inputs_meta_getter):
-        self.input_spec_modes = (
-            [input_spec_mode]
-            if input_spec_mode != "all"
-            else [
-                "pure_dynamic",
-                "original",
-                # "pure_static",
-            ]
-        )
+    def __init__(self, program_id, op_example_inputs_meta_getter):
+        self.program_id = program_id
         self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
-        self.graph_input_tensor_name_prefix = "arg"
-        self.paddle_op_call_generator = PaddleOpCallGenerator()
+        self.input_spec_mode = "original"
 
-    def Generate(self, uid_and_ops):
-        if len(uid_and_ops) > self.GetLimitNumUnittestsPerOp():
-            random.shuffle(uid_and_ops)
-        valid_operand_types = (
-            ir_type.DenseTensorType,
-            ir_type.NullType,
-            ir_type.VectorType,
+    def Generate(self, seq_stmts):
+        seq_func_desc = self.MakeSequenceFuncDesc(seq_stmts)
+        return self._RenderTemplate(seq_func_desc)
+
+    def MakeSequenceFuncDesc(self, seq_stmts):
+        op_id2seq_stmt = OrderedDict((stmt.op_id, stmt) for stmt in seq_stmts)
+        ops_func_signature = OpsFuncSignature(
+            tensor_ids=self.GetTensorIds(op_id2seq_stmt),
+            operand_ids=self.GetOperandIds(op_id2seq_stmt),
+            operand_tensor_id4operand_id=self.MakeOperandTensorId4OperandId(
+                op_id2seq_stmt
+            ),
+            null_tensor_id4operand_id=self.MakeNullTensorId4OperandId(op_id2seq_stmt),
+            tensor_list_member_ids4operand_id=self.MakeTensorListMemberIds4OperandId(
+                op_id2seq_stmt
+            ),
+            tensor_name4tensor_id=self.MakeTensorName4TensorId(op_id2seq_stmt),
+            tensor_name4operand_id=self.MakeTensorName4OperandId(op_id2seq_stmt),
+            input_spec_shape_dtype4tensor_id=self.MakeInputSpecShapeAndDtype4TensorId(
+                op_id2seq_stmt,
+            ),
+            example_input_meta4tensor_id=self.MakeExampleInputsMeta4TensorId(
+                op_id2seq_stmt,
+            ),
+            example_input_data4operand_id=self.MakeExampleInputData4OperandId(
+                op_id2seq_stmt,
+            ),
+            immediate_value4operand_id=self.MakeImmediateValue4OperandId(
+                op_id2seq_stmt
+            ),
+            immediate_value4int_array_member_id=(
+                self.MakeImmediateValue4IntArrayMemberId(op_id2seq_stmt)
+            ),
         )
-        ops = [
-            PrimitiveOpStmt(
-                tensor_ids=self.GetTensorIds(program_id, op),
-                operand_ids=self.GetOperandIds(op),
-                operand_tensor_id4operand_id=self.MakeOperandTensorId4OperandId(op),
-                null_tensor_id4operand_id=self.MakeNullTensorId4OperandId(op),
-                tensor_list_member_ids4operand_id=self.MakeTensorListMemberIds4OperandId(
-                    op
-                ),
-                op_expr=self.GetOpExpr(program_id, op),
-                tensor_name4tensor_id=self.MakeTensorName4TensorId(op),
-                tensor_name4operand_id=self.MakeTensorName4OperandId(op),
-                input_spec_shape_dtype4tensor_id=self.MakeInputSpecShapeAndDtype4TensorId(
-                    input_spec_mode=input_spec_mode,
-                    program_id=program_id,
-                    op=op,
-                ),
-                example_input_meta4tensor_id=self.MakeExampleInputsMeta4TensorId(
-                    program_id=program_id,
-                    op=op,
-                ),
-                example_input_data4operand_id=self.MakeExampleInputData4OperandId(
-                    program_id=program_id,
-                    op=op,
-                ),
-                immediate_value4operand_id=self.MakeImmediateValue4OperandId(op),
-                immediate_value4int_array_member_id=(
-                    self.MakeImmediateValue4IntArrayMemberId(program_id, op)
-                ),
+        output_tensor_names = self.GetOutputTensorNames(seq_stmts)
+
+        def GetUnusedTensorName(stmt):
+            return list(
+                set(stmt.tensors_used_by_me_and_downstream)
+                - set(stmt.tensors_used_by_downstream)
             )
-            for input_spec_mode in self.input_spec_modes
-            for program_id, op in uid_and_ops
-            if self.op_example_inputs_meta_getter.HasAllInputs(program_id, op)
-            if all(
-                isinstance(input_type, valid_operand_types)
-                for input_type in op.input_types
-            )
-            if all(
-                isinstance(output_type, valid_operand_types)
-                for output_type in op.output_types
-            )
+
+        return SequenceFuncDesc(
+            ops_func_signature=ops_func_signature,
+            output_tensor_names=output_tensor_names,
+            seq_stmts=seq_stmts,
+            get_unused_tensor_name=GetUnusedTensorName,
+        )
+
+    def GetOutputTensorNames(self, seq_stmts):
+        tensors_used_by_downstream = set(seq_stmts[-1].tensors_used_by_downstream)
+        return [
+            tensor_name
+            for stmt in seq_stmts
+            for tensor_name in stmt.output_tensor_names
+            if tensor_name in tensors_used_by_downstream
         ]
-        return self._RenderTemplate(ops)
 
-    def GetLimitNumUnittestsPerOp(self):
-        limit = os.getenv("ATHENA_LIMIT_NUM_UNITTESTS_PER_OP")
-        return 1024 if limit is None else int(limit)
-
-    def MakeImmediateValue4OperandId(self, op):
+    def MakeImmediateValue4OperandId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
         def ImmediateValue4OperandId(operand_id, data):
+            op = op_id2seq_stmt[operand_id.op_id].op
             return self.GetImmediateValue4OperandId(op, operand_id, data)
 
         return ImmediateValue4OperandId
 
-    def MakeImmediateValue4IntArrayMemberId(self, program_id, op):
+    def MakeImmediateValue4IntArrayMemberId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
         def ImmediateValue4IntArrayMemberId(tensor_id):
+            program_id = self.program_id
+            op = op_id2seq_stmt[tensor_id.op_id].op
             return self.GetImmediateValue4IntArrayMemberId(program_id, op, tensor_id)
 
         return ImmediateValue4IntArrayMemberId
@@ -224,12 +166,19 @@ class PrimitiveOpUnittestsGenerator:
             return (None, None)
         return (tensor_meta.data, tensor_meta.dtype)
 
-    def MakeExampleInputsMeta4TensorId(self, program_id, op):
-        return lambda tensor_id: self.GetExampleInputsMeta4TensorId(
-            program_id=program_id,
-            op=op,
-            tensor_id=tensor_id,
-        )
+    def MakeExampleInputsMeta4TensorId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
+        def GetExampleInputsMeta4TensorId(tensor_id):
+            program_id = self.program_id
+            op = op_id2seq_stmt[tensor_id.op_id].op
+            return self.GetExampleInputsMeta4TensorId(
+                program_id=program_id,
+                op=op,
+                tensor_id=tensor_id,
+            )
+
+        return GetExampleInputsMeta4TensorId
 
     def GetExampleInputsMeta4TensorId(self, program_id, op, tensor_id):
         if isinstance(tensor_id, NullTensorId):
@@ -266,25 +215,39 @@ class PrimitiveOpUnittestsGenerator:
         immediate_value = self.GetImmediateValue4OperandId(op, operand_id, data.data)
         return immediate_value is not None
 
-    def MakeExampleInputData4OperandId(self, program_id, op):
+    def MakeExampleInputData4OperandId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
         def Get(operand_id):
+            op = op_id2seq_stmt[operand_id.op_id].op
             if isinstance(op.input_types[operand_id.operand_idx], ir_type.NullType):
                 return None
-            return self.GetExampleTensorMeta(
+            program_id = self.program_id
+            op = op_id2seq_stmt[operand_id.op_id].op
+            data = self.GetExampleTensorMeta(
                 program_id=program_id,
                 op=op,
                 input_idx=operand_id.operand_idx,
-            ).data
+            )
+            return data.data if data is not None else None
 
         return Get
 
-    def MakeInputSpecShapeAndDtype4TensorId(self, input_spec_mode, program_id, op):
-        return lambda tensor_id: self.InputSpecShapeAndDtype4TensorId(
-            input_spec_mode=input_spec_mode,
-            program_id=program_id,
-            op=op,
-            tensor_id=tensor_id,
-        )
+    def MakeInputSpecShapeAndDtype4TensorId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
+        def GetInputSpecShapeAndDtype4TensorId(tensor_id):
+            input_spec_mode = self.input_spec_mode
+            program_id = self.program_id
+            op = op_id2seq_stmt[tensor_id.op_id].op
+            return self.InputSpecShapeAndDtype4TensorId(
+                input_spec_mode=input_spec_mode,
+                program_id=program_id,
+                op=op,
+                tensor_id=tensor_id,
+            )
+
+        return GetInputSpecShapeAndDtype4TensorId
 
     def InputSpecShapeAndDtype4TensorId(
         self,
@@ -300,14 +263,14 @@ class PrimitiveOpUnittestsGenerator:
                 input_spec_mode=input_spec_mode,
                 program_id=program_id,
                 op=op,
-                operand_id=OperandId(tensor_id.operand_tensor_idx),
+                operand_id=OperandId(op.op_id, tensor_id.operand_tensor_idx),
             )
         elif isinstance(tensor_id, TensorListMemberId):
             operand_spec = self.InputSpecShapeAndDtype4OperandId(
                 input_spec_mode=input_spec_mode,
                 program_id=program_id,
                 op=op,
-                operand_id=OperandId(tensor_id.operand_tensor_list_idx),
+                operand_id=OperandId(op.op_id, tensor_id.operand_tensor_list_idx),
             )
             return InputSpecDesc(
                 shape=operand_spec.shape[tensor_id.tensor_list_member_idx],
@@ -324,7 +287,7 @@ class PrimitiveOpUnittestsGenerator:
         operand_id,
     ):
         input_idx = operand_id.operand_idx
-        tensor = self.GetOpOperandTensors(op)[input_idx]
+        tensor = self.GetOpOperandTensor(op, input_idx)
         if isinstance(tensor.type, ir_type.DenseTensorType):
 
             def GetShape():
@@ -361,48 +324,85 @@ class PrimitiveOpUnittestsGenerator:
             dtype=dtype,
         )
 
-    def MakeTensorName4OperandId(self, op):
-        operand_tensors = self.GetOpOperandTensors(op)
-        return lambda operand_id: operand_tensors[operand_id.operand_idx].name
+    def MakeTensorName4OperandId(self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]):
+        def GetSourceNames(op_id):
+            return op_id2seq_stmt[op_id].input_tensor_names
 
-    def MakeTensorName4TensorId(self, op):
+        def TensorName4OperandId(operand_id):
+            return operand_id.get_source_name(GetSourceNames)
+
+        return TensorName4OperandId
+
+    def MakeTensorName4TensorId(self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]):
+        def GetSourceNames(op_id):
+            return op_id2seq_stmt[op_id].input_tensor_names
+
         def TensorName4TensorId(tensor_id):
-            if isinstance(tensor_id, NullTensorId):
-                return "None"
-            if isinstance(tensor_id, OperandTensorId):
-                return f"{self.graph_input_tensor_name_prefix}_{tensor_id.operand_tensor_idx}"
-            if isinstance(tensor_id, TensorListMemberId):
-                i = tensor_id.operand_tensor_list_idx
-                j = tensor_id.tensor_list_member_idx
-                return f"{self.graph_input_tensor_name_prefix}_{i}_{j}"
+            return tensor_id.get_source_name(GetSourceNames)
 
         return TensorName4TensorId
 
-    def MakeTensorListMemberIds4OperandId(self, op):
-        return lambda operand_id: operand_id.get_tensor_list_member_ids(op)
+    def MakeTensorListMemberIds4OperandId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
+        def TensorListMemberIds4OperandId(operand_id):
+            op = op_id2seq_stmt[operand_id.op_id].op
+            return operand_id.get_tensor_list_member_ids(op)
 
-    def MakeNullTensorId4OperandId(self, op):
-        return lambda operand_id: operand_id.get_null_tensor_id(op)
+        return TensorListMemberIds4OperandId
 
-    def MakeOperandTensorId4OperandId(self, op):
-        return lambda operand_id: operand_id.get_operand_tensor_id(op)
+    def MakeNullTensorId4OperandId(self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]):
+        def NullTensorId4OperandId(operand_id):
+            op = op_id2seq_stmt[operand_id.op_id].op
+            return operand_id.get_null_tensor_id(op)
 
-    def GetOperandIds(self, op):
-        return [OperandId(i) for i in range(len(op.input_types))]
+        return NullTensorId4OperandId
 
-    def GetTensorIds(self, program_id, op):
-        def YieldOpOperandTensorId(input_idx):
+    def MakeOperandTensorId4OperandId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
+        def OperandTensorId4OperandId(operand_id):
+            op = op_id2seq_stmt[operand_id.op_id].op
+            return operand_id.get_operand_tensor_id(op)
+
+        return OperandTensorId4OperandId
+
+    def GetOperandIds(self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]):
+        inner_output_tensor_names = set(
+            tensor_name
+            for _, stmt in op_id2seq_stmt.items()
+            for tensor_name in stmt.output_tensor_names
+        )
+
+        def GetSourceNames(op_id):
+            return op_id2seq_stmt[op_id].input_tensor_names
+
+        existed_tensor_names = set()
+        return [
+            operand_id
+            for op_id, stmt in op_id2seq_stmt.items()
+            for operand_idx in range(len(stmt.input_tensor_names))
+            if stmt.input_tensor_names[operand_idx] not in inner_output_tensor_names
+            for operand_id in [OperandId(op_id, operand_idx)]
+            for tensor_name in [operand_id.get_source_name(GetSourceNames)]
+            if tensor_name not in existed_tensor_names
+            for _ in [existed_tensor_names.add(tensor_name)]
+        ]
+
+    def GetTensorIds(self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]):
+        def YieldOpOperandTensorId(operand_id):
+            op = op_id2seq_stmt[operand_id.op_id].op
+            input_idx = operand_id.operand_idx
             input_type = op.input_types[input_idx]
             if isinstance(input_type, ir_type.NullType):
                 yield from []
             elif isinstance(input_type, ir_type.DenseTensorType):
-                if not self.IsOperandImmediateValue(
-                    program_id, op, OperandId(input_idx)
-                ):
-                    yield OperandTensorId(input_idx)
+                if not self.IsOperandImmediateValue(self.program_id, op, operand_id):
+                    yield OperandTensorId(operand_id.op_id, input_idx)
             elif isinstance(input_type, ir_type.VectorType):
                 yield from (
                     TensorListMemberId(
+                        op_id=operand_id.op_id,
                         operand_tensor_list_idx=input_idx,
                         tensor_list_member_idx=i,
                     )
@@ -411,16 +411,18 @@ class PrimitiveOpUnittestsGenerator:
             else:
                 raise NotImplementedError()
 
+        def GetSourceNames(op_id):
+            return op_id2seq_stmt[op_id].input_tensor_names
+
+        existed_tensor_names = set()
         return [
             tensor_id
-            for input_idx in range(len(op.input_types))
-            for tensor_id in YieldOpOperandTensorId(input_idx)
+            for operand_id in self.GetOperandIds(op_id2seq_stmt)
+            for tensor_id in YieldOpOperandTensorId(operand_id)
+            for tensor_name in [tensor_id.get_source_name(GetSourceNames)]
+            if tensor_name not in existed_tensor_names
+            for _ in [existed_tensor_names.add(tensor_name)]
         ]
-
-    def GetOpExpr(self, program_id, op):
-        op = ConvertToPaddleOp(op)
-        input_tensors = self.GetOpOperandTensors(op)
-        return self.paddle_op_call_generator.GenerateOpCall(op, *input_tensors)
 
     def GetInputSpecShapeAndDtype(self, input_spec_mode, program_id, op):
         if input_spec_mode == "original":
@@ -453,6 +455,10 @@ class PrimitiveOpUnittestsGenerator:
 
     def GetExampleInputsMeta(self, program_id, op, input_idx):
         tensor_meta = self.GetExampleTensorMeta(program_id, op, input_idx)
+        if tensor_meta is None:
+            raise ValueError(
+                f"program_id: {program_id}, op_id: {op.op_id}, input_idx: {input_idx}"
+            )
         input_type = op.input_types[input_idx]
         if not isinstance(input_type, ir_type.DenseTensorType):
             raise NotImplementedError()
@@ -465,46 +471,36 @@ class PrimitiveOpUnittestsGenerator:
 
     def GetOpOperandTensors(self, op):
         return [
-            ConvertToPaddleTensor(
-                ir_tensor.Tensor(
-                    local_name_prefix="in_",
-                    name=f"input_{input_idx}",
-                    arg_name_as_input=None,
-                    defining_op_name=None,
-                    type=input_type,
-                    dim_exprs=ir_symbol.NullShapeOrDataDimExprs(),
-                )
-            )
-            for input_idx, input_type in enumerate(op.input_types)
+            self.GetOpOperandTensor(op, input_idx)
+            for input_idx, _ in enumerate(op.input_types)
         ]
 
-    def _RenderTemplate(self, ops):
-        template = self._GetTemplate("template_primitive_op_unittest.jinja")
-        cached_test_class_names = set()
-        empty_str = lambda x: ""
+    def GetOpOperandTensor(self, op, input_idx):
+        return ConvertToPaddleTensor(
+            ir_tensor.Tensor(
+                local_name_prefix="in_",
+                name=f"input_{input_idx}",
+                arg_name_as_input=None,
+                defining_op_name=None,
+                type=op.input_types[input_idx],
+                dim_exprs=ir_symbol.NullShapeOrDataDimExprs(),
+            )
+        )
+
+    def _RenderTemplate(self, seq_func_desc):
+        template = jinja_env.get_template("template_sequence_unittest.jinja")
         PADDLE_DEBUG_ENABLE_CINN = os.getenv("PADDLE_DEBUG_ENABLE_CINN") not in {
             "0",
             "False",
             "false",
             "OFF",
         }
-        num_test_cases = 0
-
-        def IncreaseNumTestCases():
-            nonlocal num_test_cases
-            num_test_cases += 1
-            return ""
-
-        limit_test_cases = self.GetLimitNumUnittestsPerOp()
+        counter = itertools.count()
+        name2counter = defaultdict(lambda: next(counter))
         return template.render(
-            ops=ops,
-            get_sha_hash_prefix=lambda x: GetSha256sum(x)[0:32],
-            is_cached_before=lambda x: x in cached_test_class_names,
-            is_test_case_full=lambda: num_test_cases >= limit_test_cases,
-            inc_num_test_cases=IncreaseNumTestCases,
-            cache=lambda x: empty_str(cached_test_class_names.add(x)),
+            seq_func_desc=seq_func_desc,
             PADDLE_DEBUG_ENABLE_CINN=PADDLE_DEBUG_ENABLE_CINN,
-            tensor_name_converter=lambda x: x,
+            tensor_name_converter=lambda x: f"t{name2counter[x]}",
         )
 
     def GetCppOperandTypeName(self, op, input_idx):
@@ -522,10 +518,18 @@ class PrimitiveOpUnittestsGenerator:
     def _GetTemplate(self, template_name):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         with open(f"{dir_path}/{template_name}", "r") as f:
-            return Template(f.read())
+            return jinja_env.get_template(f.read())
 
 
 def GetSha256sum(content):
     m = hashlib.sha256()
     m.update(content.encode())
     return m.hexdigest()
+
+
+jinja_env = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(
+        searchpath=os.path.dirname(os.path.realpath(__file__))
+    )
+)
+jinja_env.filters["py_map"] = lambda values, f: map(f, values)

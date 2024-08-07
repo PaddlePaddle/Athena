@@ -141,7 +141,10 @@ class OpExampleInputMetaScriptGenerator:
 
     def _RenderTemplate(self, programs):
         template = self._GetTemplate("template_op_example_input_meta_script.jinja")
-        return template.render(programs=programs)
+        return template.render(
+            programs=programs,
+            tensor_name_converter=lambda x: x,
+        )
 
     def _GetTemplate(self, template_name):
         dir_path = os.path.dirname(os.path.realpath(__file__))
