@@ -24,8 +24,8 @@ import os
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string("ir_programs", "", "input directory.")
-flags.DEFINE_string("op_example_input_tensor_meta", "", "op example input tensor meta files.")
+flags.DEFINE_string("ir_programs", "", "ir programs file.")
+flags.DEFINE_string("op_example_input_tensor_meta", "", "op example input tensor meta file.")
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
 
 

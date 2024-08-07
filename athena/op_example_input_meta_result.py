@@ -40,6 +40,7 @@ def main(argv):
     System(
         f"cat {FLAGS.output_dir}/result_{FLAGS.input_file_prefix}*.py 2>/dev/null | tee {concated_out_file}"
     )
+    print(f"# dump op example input meta into {concated_out_file}")
 
 
 def System(cmd):

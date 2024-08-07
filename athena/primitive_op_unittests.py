@@ -1,77 +1,114 @@
-import sys
+from athena.util.load_pir_py_classes import GetProgramClasses, GetClasses
+from athena.util.op_example_inputs_meta_getter import (
+    MakeOpExampleInputsMetaGetter,
+)
+from athena.util.primitive_op_extractor import PrimitiveOpExtractor
+from athena.generators.primitive_op_unittests_generator import (
+    PrimitiveOpUnittestsGenerator,
+)
+from athena.util.ir_program_util import IsBackwardProgram, GetProgramId
+import athena.ir.ir_op as ir_op
+import athena.ir.ir_type as ir_type
 from absl import app
 from absl import flags
-import os
-import glob
-import tempfile
-import shutil
+import hashlib
+from itertools import groupby
 
 FLAGS = flags.FLAGS
+
 flags.DEFINE_string("ir_programs", "", "ir programs file.")
-flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
-flags.DEFINE_string("output_dir", "", "output directory.")
+flags.DEFINE_string("op_example_input_tensor_meta", "", "op example input tensor meta file.")
+flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
 flags.DEFINE_enum(
     "input_spec_mode",
     "all",
     ["all", "original", "pure_static", "pure_dynamic"],
     "generate dynamic shape unittests if input_spec_mode is pure_dynamic",
 )
-flags.DEFINE_string("tmp_dir", "", "temp directory.")
-flags.DEFINE_integer("bucket_size", 128, "bucket size.")
-flags.DEFINE_integer("while_loop_limit", 128, "while loop limit")
+flags.DEFINE_string("input_dir", "./input-dir", "input directory.")
 
 
 def main(argv):
-    WithTempDirectory(Main)
+    assert FLAGS.ir_programs != ""
+    assert FLAGS.op_example_input_tensor_meta != ""
+    original_programs_file = FLAGS.ir_programs
+    op_example_inputs_file = FLAGS.op_example_input_tensor_meta
+    unittests = GetOutputUnittests(original_programs_file, op_example_inputs_file)
+    for name, unittest in unittests:
+        filepath = f"{FLAGS.output_dir}/test_{FLAGS.input_spec_mode}_{name}.py"
+        WriteToFile(filepath, unittest)
+        PrintToTerminal(name, filepath, unittest)
 
 
-def WithTempDirectory(f):
-    if FLAGS.tmp_dir == "":
-        tmp_dir = tempfile.mkdtemp()
-        return f(tmp_dir)
-        shutil.rmtree(tmp_dir)
-    else:
-        assert os.path.isdir(FLAGS.tmp_dir)
-        return f(FLAGS.tmp_dir)
+def GetSha256sum(content):
+    m = hashlib.sha256()
+    m.update(content.encode())
+    return m.hexdigest()
 
 
-def Main(tmp_dir):
-    assert os.path.isdir(FLAGS.output_dir), f"directory {FLAGS.output_dir} not existed."
-    shutil.copyfile(FLAGS.ir_programs, f"{tmp_dir}/original_programs.py")
-    shutil.copyfile(
-        FLAGS.example_inputs, f"{tmp_dir}/programs_example_input_tensor_meta.py"
+def PrintToTerminal(name, filepath, unittest):
+    print("# file-splitter-begin-fusion-op-name: ", name, filepath)
+    print(unittest)
+    print("# file-splitter--end--fusion-op-name: ", name, filepath)
+
+
+def WriteToFile(filepath, unittest):
+    with open(filepath, "w") as f:
+        f.write(unittest)
+
+
+def GetOutputUnittests(original_programs_file, op_example_inputs_file):
+    op_example_inputs_meta_getter = MakeOpExampleInputsMetaGetter(
+        GetClasses(op_example_inputs_file)
     )
-    file_prefix = "tmp_op_example_input_"
-    for file in glob.glob(f"{tmp_dir}/{file_prefix}*.py"):
-        os.remove(file)
-    for file in glob.glob(f"{FLAGS.output_dir}/test_{FLAGS.input_spec_mode}_*.py"):
-        os.remove(file)
-    enable_local_tensor = os.getenv("ATHENA_ENABLE_LOCAL_TENSOR")
-    enable_local_tensor = False if enable_local_tensor is None else enable_local_tensor
-    System(
-        f"ATHENA_ENABLE_LOCAL_TENSOR={enable_local_tensor} {sys.executable} -m athena.op_example_input_meta_script --output_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir} --bucket_size={FLAGS.bucket_size}"
+    ir_programs = [
+        ir_program
+        for cls in GetProgramClasses(original_programs_file)
+        for ir_program in [cls()]
+        if not IsBackwardProgram(ir_program)
+    ]
+    primitive_op_extractor = PrimitiveOpExtractor()
+    ops = [
+        (program_id, op)
+        for ir_program in ir_programs
+        for program_id in [GetProgramId(ir_program)]
+        for op in primitive_op_extractor.Extract(ir_program)
+    ]
+
+    def GetPyVarName(uid_and_op):
+        return uid_and_op[1].GetPyVarName()
+
+    grouped_ops = [
+        (name, list(ops))
+        for name, ops in groupby(sorted(ops, key=GetPyVarName), key=GetPyVarName)
+    ]
+    valid_operand_types = (
+        ir_type.DenseTensorType,
+        ir_type.NullType,
+        ir_type.VectorType,
     )
-    System(
-        f"{sys.executable} -m athena.op_example_input_meta_result --input_file_prefix={file_prefix} --input_dir={tmp_dir} --output_dir={tmp_dir} --tmp_dir={tmp_dir} --while_loop_limit={FLAGS.while_loop_limit}"
-    )
-    System(
-        f"{sys.executable} -m athena._primitive_op_unittests --input_spec_mode={FLAGS.input_spec_mode} --input_dir={tmp_dir} --output_dir={FLAGS.output_dir}"
-    )
-    sys.exit(exit_code)
-
-
-exit_code = 0
-
-
-def System(cmd):
-    print(cmd, file=sys.stderr)
-    ret = os.system(cmd)
-    global exit_code
-    if exit_code != 0:
-        return
-    if ret == 0:
-        return
-    exit_code = ret
+    for name, uid_and_ops in grouped_ops:
+        generator = PrimitiveOpUnittestsGenerator(
+            input_spec_mode=FLAGS.input_spec_mode,
+            op_example_inputs_meta_getter=op_example_inputs_meta_getter,
+        )
+        uid_and_ops = [
+            (program_id, op)
+            for program_id, op in uid_and_ops
+            if op_example_inputs_meta_getter.HasAllInputs(program_id, op)
+            if all(
+                isinstance(input_type, valid_operand_types)
+                for input_type in op.input_types
+            )
+            if all(
+                isinstance(output_type, valid_operand_types)
+                for output_type in op.output_types
+            )
+        ]
+        if len(uid_and_ops) == 0:
+            continue
+        unittest = generator.Generate(uid_and_ops)
+        yield name, unittest
 
 
 if __name__ == "__main__":
