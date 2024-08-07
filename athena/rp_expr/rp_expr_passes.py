@@ -49,10 +49,12 @@ class FlattenTokenListPass(Pass):
 
 class FoldTokensPass(Pass):
     def __init__(self, id_allocator: TokenIdAllocator):
-        self.max_windows_size = 64
+        self.max_windows_size = 8
         self.id_allocator = id_allocator
         size = id_allocator.NextTokenId()
-        self.embedding = paddle.uniform([size], dtype="float64", min=-1, max=1)
+        self.embedding = paddle.uniform(
+            [size], dtype="float64", min=-1, max=1, seed=2024
+        )
         self.embedding.stop_gradient = False
 
     def __call__(self, token_tensor: NaiveTokenRpExpr):
@@ -88,7 +90,7 @@ class FoldTokensPass(Pass):
             start
             for start in self.GetDisjoint(pattern_length, indexes.numpy().tolist())
         ]
-        if len(disjoint_range_starts) <= 1:
+        if len(disjoint_range_starts) < 1:
             return None, input_tensor
         assert disjoint_range_starts[-1] + pattern_length <= num_tokens
         first_start = disjoint_range_starts[0]
@@ -125,7 +127,7 @@ class FoldTokensPass(Pass):
     def GetConv(self, num_tokens):
         windows_size = min(num_tokens, self.max_windows_size)
         weight = paddle.uniform(
-            [windows_size, windows_size], dtype="float64", min=-1, max=1
+            [windows_size, windows_size], dtype="float64", min=-1, max=1, seed=2024
         )
         weight.stop_gradient = False
         weight_shape = (windows_size, 1, windows_size)
@@ -156,23 +158,30 @@ class FoldTokensPass(Pass):
         y = conv(input)
         y = y.reshape((windows_size, -1))
         y_hash = y.view(paddle.int64)
-        hash_weight = paddle.arange(windows_size).reshape((-1, 1)).expand(y_hash.shape)
-        weighted_y_hash = paddle.concat(
-            [hash_weight.reshape((-1, 1)), y_hash.reshape((-1, 1))], axis=1
+        # `pattern_len_sub_1` means `pattern_length - 1`
+        pattern_len_sub_1 = (
+            paddle.arange(windows_size).reshape((-1, 1)).expand(y_hash.shape)
         )
-        unique_weighted_hash, counts = paddle.unique(
-            weighted_y_hash, axis=0, return_counts=True
+        pattern_len_sub_1_and_hash = paddle.concat(
+            [pattern_len_sub_1.reshape((-1, 1)), y_hash.reshape((-1, 1))], axis=1
+        )
+        unique_pattern_len_sub_1_and_hash, counts = paddle.unique(
+            pattern_len_sub_1_and_hash, axis=0, return_counts=True
         )
         most_frequent_hash_idx = paddle.argmax(
-            unique_weighted_hash[:, 0] * (counts - 1)
+            unique_pattern_len_sub_1_and_hash[:, 0] * (counts - 1)
         )
-        most_frequent_hash = int(unique_weighted_hash[most_frequent_hash_idx, 1])
-        most_frequent_hash_weight = int(unique_weighted_hash[most_frequent_hash_idx, 0])
+        most_frequent_hash = int(
+            unique_pattern_len_sub_1_and_hash[most_frequent_hash_idx, 1]
+        )
+        most_frequent_pattern_len_sub_1 = int(
+            unique_pattern_len_sub_1_and_hash[most_frequent_hash_idx, 0]
+        )
         (indexes,) = paddle.where(
-            most_frequent_hash == y_hash[most_frequent_hash_weight, :]
+            most_frequent_hash == y_hash[most_frequent_pattern_len_sub_1, :]
         )
         indexes = indexes.reshape((-1,))
-        return most_frequent_hash_weight + 1, indexes
+        return most_frequent_pattern_len_sub_1 + 1, indexes
 
 
 class RecursiveFoldTokensPass(Pass):

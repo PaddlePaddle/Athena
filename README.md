@@ -32,6 +32,14 @@ python3.9 -m athena.sequence_unittests --ir_programs=./example_exec_programs.py 
 ```
 Details see `tests/test_sequence_unittests.sh`.
 
+### Typical sequence unittests
+
+Typical sequence statement unittests are generated from pir programs file and op example input tensor meta file.
+```bash
+python3.9 -m athena.typical_sequence_unittests --length_slice="16:33" --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
+```
+Details see `tests/test_typical_sequence_unittests.sh`.
+
 ### Primitive op unittests 
 Primitive op unittests are generated from pir programs file and op example input tensor meta file.
 ```bash

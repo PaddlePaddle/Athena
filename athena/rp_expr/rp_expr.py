@@ -60,6 +60,32 @@ class LetsListTokenRpExpr(TokenRpExpr):
     symbol_token_tensors: t.List[np.ndarray["N", np.int64]]
     body_rp_expr: t.List[np.ndarray["N", np.int64]]
 
+    def DebugStrings(
+        self, token_id2primitive_id: t.List[PrimitiveId], prefix="sequence"
+    ):
+        def SymbolToString(symbol_id):
+            return f"{prefix}{symbol_id}"
+
+        def ToString(token_id):
+            return (
+                token_id2primitive_id[token_id]
+                if token_id < len(token_id2primitive_id)
+                else SymbolToString(token_id)
+            )
+
+        yield from (
+            pycode
+            for symbol_id, tensor in zip(
+                self.symbol_token_ids, self.symbol_token_tensors
+            )
+            for token_ids in [tensor.tolist()]
+            for pycode in [
+                f"def {SymbolToString(symbol_id)}():",
+                *[f"  {ToString(x)} # {x}" for x in token_ids],
+            ]
+        )
+        yield f"[{','.join(map(lambda t: SymbolToString(int(t[0])), self.body_rp_expr))}]"
+
 
 class TokenIdAllocator:
     def __init__(self, next_token_id: int = 0):
