@@ -63,9 +63,9 @@ class FoldTokensPass(Pass):
         most_frequent_length, indexes = self.GetMostFrequentPatternLengthAndIndexes(
             input_tensor
         )
-        most_frequent_length = min(
+        most_frequent_length = self.GetAdaptivePatternLength(
             most_frequent_length,
-            self.GetMinimumGap(indexes),
+            indexes,
         )
         new_token_id, replacement = self.Replace(
             pattern_length=most_frequent_length,
@@ -81,9 +81,17 @@ class FoldTokensPass(Pass):
             body_rp_expr=NaiveTokenRpExpr(tensor=replacement),
         )
 
-    def GetMinimumGap(self, indexes):
-        assert indexes.shape[0] > 1
-        return int(paddle.min(paddle.diff(indexes)))
+    def GetAdaptivePatternLength(self, pattern_length, indexes):
+        indexes = indexes.numpy().tolist()
+        while pattern_length > 1:
+            disjoint_range_starts = [
+                start
+                for start in self.GetDisjoint(pattern_length, indexes)
+            ]
+            if len(disjoint_range_starts) > 1:
+                break
+            pattern_length = pattern_length // 2
+        return pattern_length
 
     def Replace(
         self,
