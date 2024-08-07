@@ -29,6 +29,7 @@ from athena.util.ops_func_signature import (
 from collections import OrderedDict, defaultdict
 import itertools
 
+
 @dataclass
 class SequenceFuncDesc:
     ops_func_signature: OpsFuncSignature
@@ -42,7 +43,7 @@ class SequenceUnittestsGenerator:
     def __init__(self, program_id, op_example_inputs_meta_getter):
         self.program_id = program_id
         self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
-        self.input_spec_mode = 'original'
+        self.input_spec_mode = "original"
 
     def Generate(self, seq_stmts):
         seq_func_desc = self.MakeSequenceFuncDesc(seq_stmts)
@@ -79,11 +80,13 @@ class SequenceUnittestsGenerator:
             ),
         )
         output_tensor_names = self.GetOutputTensorNames(seq_stmts)
+
         def GetUnusedTensorName(stmt):
             return list(
                 set(stmt.tensors_used_by_me_and_downstream)
                 - set(stmt.tensors_used_by_downstream)
             )
+
         return SequenceFuncDesc(
             ops_func_signature=ops_func_signature,
             output_tensor_names=output_tensor_names,
@@ -345,12 +348,14 @@ class SequenceUnittestsGenerator:
         def TensorListMemberIds4OperandId(operand_id):
             op = op_id2seq_stmt[operand_id.op_id].op
             return operand_id.get_tensor_list_member_ids(op)
+
         return TensorListMemberIds4OperandId
 
     def MakeNullTensorId4OperandId(self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]):
         def NullTensorId4OperandId(operand_id):
             op = op_id2seq_stmt[operand_id.op_id].op
             return operand_id.get_null_tensor_id(op)
+
         return NullTensorId4OperandId
 
     def MakeOperandTensorId4OperandId(
@@ -368,6 +373,7 @@ class SequenceUnittestsGenerator:
             for _, stmt in op_id2seq_stmt.items()
             for tensor_name in stmt.output_tensor_names
         )
+
         def GetSourceNames(op_id):
             return op_id2seq_stmt[op_id].input_tensor_names
 
@@ -391,9 +397,7 @@ class SequenceUnittestsGenerator:
             if isinstance(input_type, ir_type.NullType):
                 yield from []
             elif isinstance(input_type, ir_type.DenseTensorType):
-                if not self.IsOperandImmediateValue(
-                    self.program_id, op, operand_id
-                ):
+                if not self.IsOperandImmediateValue(self.program_id, op, operand_id):
                     yield OperandTensorId(operand_id.op_id, input_idx)
             elif isinstance(input_type, ir_type.VectorType):
                 yield from (
@@ -452,7 +456,9 @@ class SequenceUnittestsGenerator:
     def GetExampleInputsMeta(self, program_id, op, input_idx):
         tensor_meta = self.GetExampleTensorMeta(program_id, op, input_idx)
         if tensor_meta is None:
-            raise ValueError(f"program_id: {program_id}, op_id: {op.op_id}, input_idx: {input_idx}")
+            raise ValueError(
+                f"program_id: {program_id}, op_id: {op.op_id}, input_idx: {input_idx}"
+            )
         input_type = op.input_types[input_idx]
         if not isinstance(input_type, ir_type.DenseTensorType):
             raise NotImplementedError()
@@ -520,9 +526,10 @@ def GetSha256sum(content):
     m.update(content.encode())
     return m.hexdigest()
 
+
 jinja_env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(
         searchpath=os.path.dirname(os.path.realpath(__file__))
     )
 )
-jinja_env.filters['py_map'] = lambda values, f: map(f, values)
+jinja_env.filters["py_map"] = lambda values, f: map(f, values)

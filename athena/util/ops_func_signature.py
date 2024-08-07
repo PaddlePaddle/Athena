@@ -25,6 +25,7 @@ class NullTensorId(TensorId):
     def get_source_name(self, get_source_names: t.Callable[int, t.List[str]]) -> str:
         return "None"
 
+
 @dataclass
 class OperandTensorId(TensorId):
     op_id: int
@@ -32,6 +33,7 @@ class OperandTensorId(TensorId):
 
     def get_source_name(self, get_source_names: t.Callable[int, t.List[str]]) -> str:
         return get_source_names(self.op_id)[self.operand_tensor_idx]
+
 
 @dataclass
 class TensorListMemberId(TensorId):
@@ -78,6 +80,7 @@ class OperandId:
 
     def get_source_name(self, get_source_names: t.Callable[int, t.List[str]]) -> str:
         return get_source_names(self.op_id)[self.operand_idx]
+
 
 @dataclass
 class OpsFuncSignature:

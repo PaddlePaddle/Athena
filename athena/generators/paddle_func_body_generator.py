@@ -25,7 +25,7 @@ class IndentedPyCode:
 
 @dataclass
 class PyCodeStmt:
-    op: 'Op'
+    op: "Op"
     op_unique_local_name: str
     pycode: List[IndentedPyCode]
     input_tensor_names: List[str]
@@ -89,7 +89,9 @@ class PaddleFuncBodyGenerator:
         self.op_id2op_func_in_out_names_signature = GetOpId2OpPipeInOutNamesSignature(
             self.func, free_vars, args, get_local_name
         )
-        self.block_op_calls = BlockOpCallsExtractor().Extract(self.func, free_vars, args)
+        self.block_op_calls = BlockOpCallsExtractor().Extract(
+            self.func, free_vars, args
+        )
         for index, op_call in enumerate(self.block_op_calls.body_op_calls):
             self.body_op_id2op_index[op_call.op.op_id] = index
         for op_call in self.block_op_calls.body_op_calls:
@@ -260,7 +262,9 @@ class PaddleFuncBodyGenerator:
                 tensors_used_by_me_and_downstream=self.op_id2used_by_me_and_downstream[
                     op.op_id
                 ],
-                tensors_used_by_downstream=self.GetTensorNamesUsedByDownstream(op.op_id),
+                tensors_used_by_downstream=self.GetTensorNamesUsedByDownstream(
+                    op.op_id
+                ),
                 op_func_in_out_names_signature=self.op_id2op_func_in_out_names_signature[
                     op.op_id
                 ],

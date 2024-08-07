@@ -25,7 +25,9 @@ import os
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("ir_programs", "", "ir programs file.")
-flags.DEFINE_string("op_example_input_tensor_meta", "", "op example input tensor meta file.")
+flags.DEFINE_string(
+    "op_example_input_tensor_meta", "", "op example input tensor meta file."
+)
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
 
 
@@ -72,7 +74,7 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
         for ir_program in [cls()]
         if not IsBackwardProgram(ir_program)
     ]
-    
+
     unittest_stmts_gen = PaddleBlockUnittestStmtsGenerator(BlockNameGenerator())
     program_seq_stmts_list = (
         (program_id, seq_stmts)
@@ -81,13 +83,17 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
         for block in BlocksGenerator(ir_program).Generate()
         if AllInputOutputTypeValid(block)
         for _, stmts, _ in [unittest_stmts_gen.Generate(block)]
-        for seq_stmts in ExtractSeqStmts(stmts, program_id, op_example_inputs_meta_getter)
+        for seq_stmts in ExtractSeqStmts(
+            stmts, program_id, op_example_inputs_meta_getter
+        )
         if len(seq_stmts) > 1
         if op_example_inputs_meta_getter.HasAllInputs(program_id, seq_stmts[0].op)
     )
 
     def GetUnittests(program_id, seq_stmts):
-        return GetSequenceUnittests(program_id, seq_stmts, op_example_inputs_meta_getter)
+        return GetSequenceUnittests(
+            program_id, seq_stmts, op_example_inputs_meta_getter
+        )
 
     generated_unittests = set()
     yield from (
@@ -99,6 +105,7 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
         for _ in [generated_unittests.add(unittest)]
     )
 
+
 def AllInputOutputTypeValid(block):
     extractor = BlockOpCallsExtractor()
     block_op_calls = extractor.Extract(block.block_func, block.free_vars, block.args)
@@ -108,25 +115,29 @@ def AllInputOutputTypeValid(block):
         for in_out_type in (op_call.op.input_types + op_call.op.output_types)
     )
 
+
 def GetSeqStmtsHash(seq_stmts):
     op_names = ",".join(s.op_name for s in seq_stmts)
     return GetSha256sum(op_names)[0:32]
+
 
 def GetSha256sum(content):
     m = hashlib.sha256()
     m.update(content.encode())
     return m.hexdigest()
 
+
 def GetSequenceUnittests(program_id, seq_stmts, op_example_inputs_meta_getter):
     generator = SequenceUnittestsGenerator(program_id, op_example_inputs_meta_getter)
     return generator.Generate(seq_stmts)
 
+
 def ExtractSeqStmts(stmts, program_id, op_example_inputs_meta_getter):
     def IsValidPrimitive(stmt):
-        return (
-            op_example_inputs_meta_getter.HasAllInputs(program_id, stmt.op)
-            and IsPrimitive(stmt) 
-        )
+        return op_example_inputs_meta_getter.HasAllInputs(
+            program_id, stmt.op
+        ) and IsPrimitive(stmt)
+
     yield from (
         seq_stmts
         for is_primitive, stmt_group in groupby(stmts, key=IsValidPrimitive)
@@ -134,14 +145,19 @@ def ExtractSeqStmts(stmts, program_id, op_example_inputs_meta_getter):
         for seq_stmts in [list(stmt_group)]
     )
 
+
 def IsPrimitive(stmt):
     op = stmt.op
-    return all(l is None or len(l) == 0 for l in (
-        op.block_positional_arg_names,
-        op.block_keyword_arg_names,
-        op.block_positional_arg_types,
-        op.block_keyword_arg_types,
-    ))
+    return all(
+        l is None or len(l) == 0
+        for l in (
+            op.block_positional_arg_names,
+            op.block_keyword_arg_names,
+            op.block_positional_arg_types,
+            op.block_keyword_arg_types,
+        )
+    )
+
 
 valid_operand_types = (
     ir_type.DenseTensorType,
