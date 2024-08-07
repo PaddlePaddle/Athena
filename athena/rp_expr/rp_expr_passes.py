@@ -50,10 +50,11 @@ class FlattenTokenListPass(Pass):
 class FoldTokensPass(Pass):
     def __init__(self, id_allocator: TokenIdAllocator):
         self.max_windows_size = 8
+        self.random_feature_size = 2
         self.id_allocator = id_allocator
         size = id_allocator.NextTokenId()
         self.embedding = paddle.uniform(
-            [size], dtype="float64", min=-1, max=1, seed=2024
+            [size, self.random_feature_size], dtype="float64", min=-1, max=1, seed=2024
         )
         self.embedding.stop_gradient = False
 
@@ -61,6 +62,10 @@ class FoldTokensPass(Pass):
         input_tensor = token_tensor.tensor
         most_frequent_length, indexes = self.GetMostFrequentPatternLengthAndIndexes(
             input_tensor
+        )
+        most_frequent_length = min(
+            most_frequent_length,
+            self.GetMinimumGap(indexes),
         )
         new_token_id, replacement = self.Replace(
             pattern_length=most_frequent_length,
@@ -76,6 +81,10 @@ class FoldTokensPass(Pass):
             body_rp_expr=NaiveTokenRpExpr(tensor=replacement),
         )
 
+    def GetMinimumGap(self, indexes):
+        assert indexes.shape[0] > 1
+        return int(paddle.min(paddle.diff(indexes)))
+
     def Replace(
         self,
         pattern_length,
@@ -90,7 +99,7 @@ class FoldTokensPass(Pass):
             start
             for start in self.GetDisjoint(pattern_length, indexes.numpy().tolist())
         ]
-        if len(disjoint_range_starts) < 1:
+        if len(disjoint_range_starts) <= 1:
             return None, input_tensor
         assert disjoint_range_starts[-1] + pattern_length <= num_tokens
         first_start = disjoint_range_starts[0]
@@ -126,12 +135,18 @@ class FoldTokensPass(Pass):
 
     def GetConv(self, num_tokens):
         windows_size = min(num_tokens, self.max_windows_size)
-        weight = paddle.uniform(
-            [windows_size, windows_size], dtype="float64", min=-1, max=1, seed=2024
+
+        def GetWeight():
+            weight = paddle.uniform(
+                [windows_size, windows_size], dtype="float64", min=-1, max=1, seed=2024
+            )
+            weight.stop_gradient = False
+            weight_shape = (windows_size, 1, windows_size)
+            return paddle.triu(weight).transpose([1, 0]).reshape(weight_shape)
+
+        conv_weight = paddle.concat(
+            [GetWeight() for _ in range(self.random_feature_size)], axis=1
         )
-        weight.stop_gradient = False
-        weight_shape = (windows_size, 1, windows_size)
-        conv_weight = paddle.triu(weight).transpose([1, 0]).reshape(weight_shape)
         conv = lambda input: F.conv1d(input, conv_weight, padding="VALID")
         return conv, windows_size
 
@@ -152,9 +167,11 @@ class FoldTokensPass(Pass):
         conv, windows_size = self.GetConv(num_tokens=token_tensor.shape[0])
         input = paddle.gather(self.embedding, token_tensor)
         input.stop_gradient = False
-        zeros = paddle.zeros([windows_size - 1], paddle.float64)
+        zeros = paddle.zeros(
+            [windows_size - 1, self.random_feature_size], paddle.float64
+        )
         input = paddle.concat([input, zeros])
-        input = input.reshape((1, 1, -1))
+        input = input.reshape((1, -1, self.random_feature_size)).transpose([0, 2, 1])
         y = conv(input)
         y = y.reshape((windows_size, -1))
         y_hash = y.view(paddle.int64)

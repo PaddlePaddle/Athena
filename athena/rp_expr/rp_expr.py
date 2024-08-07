@@ -66,11 +66,11 @@ class LetsListTokenRpExpr(TokenRpExpr):
         def SymbolToString(symbol_id):
             return f"{prefix}{symbol_id}"
 
-        def ToString(token_id):
+        def ValueToString(token_id):
             return (
                 token_id2primitive_id[token_id]
                 if token_id < len(token_id2primitive_id)
-                else SymbolToString(token_id)
+                else f"{SymbolToString(token_id)}()"
             )
 
         yield from (
@@ -81,7 +81,7 @@ class LetsListTokenRpExpr(TokenRpExpr):
             for token_ids in [tensor.tolist()]
             for pycode in [
                 f"def {SymbolToString(symbol_id)}():",
-                *[f"  {ToString(x)} # {x}" for x in token_ids],
+                *[f"  {ValueToString(x)} # {x}" for x in token_ids],
             ]
         )
         yield f"[{','.join(map(lambda t: SymbolToString(int(t[0])), self.body_rp_expr))}]"

@@ -123,6 +123,19 @@ class TestRpExprParser(unittest.TestCase):
         self.assertEqual(output, [[5], [6], [7]])
         self.assertEqual(token_id2primitive_id, [0, 1, 2, 3, 4])
 
+    def test_two_elem_pattern(self):
+        primitive_id_lists = [[1600, 411, 441, 411, 1600, 411, 32]]
+        # embeeding = [[0, 1, 2, 1, 0, 1, 3]]
+        parser = RpExprParser()
+        lets_list_rp_expr, token_id2primitive_id = parser(primitive_id_lists)
+        pattern = [x.numpy().tolist() for x in lets_list_rp_expr.symbol_token_tensors]
+        replacement = lets_list_rp_expr.symbol_token_ids
+        output = [x.numpy().tolist() for x in lets_list_rp_expr.body_rp_expr]
+        self.assertEqual(pattern, [[0, 1], [4, 2, 1, 4, 3]])
+        self.assertEqual(replacement, [4, 5])
+        self.assertEqual(output, [[5]])
+        self.assertEqual(token_id2primitive_id, [1600, 411, 441, 32])
+
 
 class TestMakeNestedIndexRangeFromLetsListTokenRpExpr(unittest.TestCase):
 
