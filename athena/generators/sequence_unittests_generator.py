@@ -82,9 +82,11 @@ class SequenceUnittestsGenerator:
         output_tensor_names = self.GetOutputTensorNames(seq_stmts)
 
         def GetUnusedTensorName(stmt):
-            return list(
-                set(stmt.tensors_used_by_me_and_downstream)
-                - set(stmt.tensors_used_by_downstream)
+            return sorted(
+                list(
+                    set(stmt.tensors_used_by_me_and_downstream)
+                    - set(stmt.tensors_used_by_downstream)
+                )
             )
 
         return SequenceFuncDesc(

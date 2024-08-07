@@ -6,7 +6,9 @@ from athena.rp_expr.rp_expr_passes import (
     RecursiveFoldTokensPass,
     FoldIfTokenIdGreatEqualPass,
 )
+from athena.rp_expr.nested_range import Range, Tree
 from athena.rp_expr.rp_expr_parser import RpExprParser
+from athena.rp_expr.rp_expr_util import MakeNestedIndexRangeFromLetsListTokenRpExpr
 
 
 class TestTokenize(unittest.TestCase):
@@ -61,10 +63,8 @@ class TestRecursiveFoldTokensPass(unittest.TestCase):
         token_list, id_allocator, _ = Tokenize(primitive_id_lists)
         flatten_pass = FlattenTokenListPass(id_allocator)
         _, flattened_rp_expr = flatten_pass(token_list)
-        print("before recursive next_token_id:", id_allocator.NextTokenId())
         fold_pass = RecursiveFoldTokensPass(id_allocator)
         success, fold_rp_expr = fold_pass(flattened_rp_expr.flattened_tensor)
-        print("after recursive next_token_id:", id_allocator.NextTokenId())
         self.assertTrue(success)
         input = flattened_rp_expr.flattened_tensor.tensor.numpy().tolist()
         pattern = [x.numpy().tolist() for x in fold_rp_expr.symbol_token_tensors]
@@ -122,6 +122,40 @@ class TestRpExprParser(unittest.TestCase):
         self.assertEqual(replacement, [5, 6, 7])
         self.assertEqual(output, [[5], [6], [7]])
         self.assertEqual(token_id2primitive_id, [0, 1, 2, 3, 4])
+
+
+class TestMakeNestedIndexRangeFromLetsListTokenRpExpr(unittest.TestCase):
+
+    def test_simple(self):
+        base = 3
+        size = 3
+        primitive_id_lists = [list(range(base + i)) for i in range(size)]
+        parser = RpExprParser()
+        lets_list_rp_expr, token_id2primitive_id = parser(primitive_id_lists)
+        trees = MakeNestedIndexRangeFromLetsListTokenRpExpr(lets_list_rp_expr)
+        tree0 = Tree(
+            Range(0, 3),
+            [
+                Range(0, 1),
+                Range(1, 2),
+                Range(2, 3),
+            ],
+        )
+        tree1 = Tree(
+            Range(0, 4),
+            [
+                tree0,
+                Range(3, 4),
+            ],
+        )
+        tree2 = Tree(
+            Range(0, 5),
+            [
+                tree1,
+                Range(4, 5),
+            ],
+        )
+        self.assertEqual(trees, [tree0, tree1, tree2])
 
 
 if __name__ == "__main__":
