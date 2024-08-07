@@ -3,6 +3,7 @@
 ## How to generate ir programs files and program example input tensor meta files?
 
 Set environment variable `FLAGS_logging_pir_py_code_dir` to an existed logging directory before running a paddle program. Once the paddle program finished, under the logging directory, there are two generated pir python files: `exec_programs.py` and `programs_example_input_tensor_meta.py`.
+
 Dumped example python files see `tests/example_exec_programs.py` and `tests/example_programs_example_input_tensor_meta.py`.
 
 ## How to prepare op example input tensor meta files?
