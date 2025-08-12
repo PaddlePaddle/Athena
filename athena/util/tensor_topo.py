@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import sys
 from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
 from athena.util.block_op_calls_extractor import BlockOpCallsExtractor
+import itertools
 
 
 @dataclass
@@ -21,18 +22,18 @@ class OpPipeInOutNamesSignature:
 
 
 def GetOpId2OpPipeInOutNamesSignature(
+    op_id2used_by_me_and_downstream,
     func,
     free_vars,
     args,
     get_local_name,
 ) -> Dict[int, OpPipeInOutNamesSignature]:
-    op_id2used = GetOpId2TensorNamesUsedByMeAndDownstream(
-        func, free_vars, args, get_local_name
-    )
+    op_id2used = op_id2used_by_me_and_downstream
     if len(op_id2used) == 0:
         return {}
     extractor = InputOutputTensorsExtractor(func)
     input_tensors, output_tensors = extractor.Extract(free_vars, args)
+    input_tensor_names = [get_local_name(t) for t in input_tensors]
 
     def get_in_names_list():
         in_names_list = [
@@ -40,7 +41,7 @@ def GetOpId2OpPipeInOutNamesSignature(
             for _, names_used_by_me_and_downstream in op_id2used.items()
         ]
         if len(in_names_list) > 0:
-            in_names_list[0] = [get_local_name(t) for t in input_tensors]
+            in_names_list[0] = input_tensor_names
         return in_names_list
 
     def get_out_names_list():
@@ -77,6 +78,7 @@ def GetOpId2TensorNamesUsedByMeAndDownstream(
     input_tensors, output_tensors = InputOutputTensorsExtractor(func).Extract(
         free_vars, args
     )
+    input_tensor_names = [get_local_name(tensor) for tensor in input_tensors]
     output_tensor_names = [get_local_name(tensor) for tensor in output_tensors]
     tensor_name2producer_idx = _GetTensorName2ProducerIdx(
         in_out_names_sigs,
@@ -86,27 +88,21 @@ def GetOpId2TensorNamesUsedByMeAndDownstream(
     op_id2used = OrderedDict()
     block_op_calls = BlockOpCallsExtractor().Extract(func, free_vars, args)
     for op_call in block_op_calls.input_op_calls:
-        op_id2used[op_call.op.op_id] = [get_local_name(t) for t in input_tensors]
+        op_id2used[op_call.op.op_id] = input_tensor_names
+    body_op_id2used_tensor_names = GetOpId2DefinedTensorNamesUsedByMeAndDownstreams(
+        in_out_names_sigs, output_tensor_names
+    )
     assert len(block_op_calls.body_op_calls) == len(in_out_names_sigs)
+    counter = itertools.count()
+    seq = itertools.count()
     for i, in_out_names_sig in enumerate(in_out_names_sigs):
-        all_input_names_used_by_me_and_downstream = _GetAllInputNamesUsedByDownStream(
-            in_out_names_sigs, i
-        )
-        all_input_names_used_by_me_and_downstream = {
-            *all_input_names_used_by_me_and_downstream,
-            *output_tensor_names,
-        }
-        current_defined_names_used_by_me_and_downstream = {
-            name
-            for name in all_input_names_used_by_me_and_downstream
-            if tensor_name2producer_idx[name][0] < i
-        }
-        op_id2used[in_out_names_sig.op_id] = _GetSorted(
-            current_defined_names_used_by_me_and_downstream,
-            key=lambda name: tensor_name2producer_idx[name],
-        )
+        if next(counter) % 1000 == 0:
+            print("GetOpId2TensorNamesUsedByMeAndDownstream iter:", next(seq) * 1000)
+        op_id = in_out_names_sig.op_id
+        op_id2used[op_id] = body_op_id2used_tensor_names[op_id]
+        op_id2used[op_id].sort(key=lambda name: tensor_name2producer_idx[name])
     for op_call in block_op_calls.output_op_calls:
-        op_id2used[op_call.op.op_id] = [get_local_name(t) for t in output_tensors]
+        op_id2used[op_call.op.op_id] = output_tensor_names
     return op_id2used
 
 
@@ -114,12 +110,19 @@ def _GetSorted(names, key):
     return sorted(list(names), key=key)
 
 
-def _GetAllInputNamesUsedByDownStream(in_out_names_sigs, idx):
-    names = set()
-    for in_out_names_sig in in_out_names_sigs[idx:]:
-        for in_name in in_out_names_sig.in_names:
-            names.add(in_name)
-    return names
+def GetOpId2DefinedTensorNamesUsedByMeAndDownstreams(
+    in_out_names_sigs,
+    output_tensor_names,
+):
+    op_id2used_by_me_and_downstreams = {}
+    used_by_downstream = set(output_tensor_names)
+    for in_out_names_sig in reversed(in_out_names_sigs):
+        used_by_downstream.difference_update(in_out_names_sig.out_names)
+        used_by_downstream.update(in_out_names_sig.in_names)
+        op_id2used_by_me_and_downstreams[in_out_names_sig.op_id] = list(
+            used_by_downstream
+        )
+    return op_id2used_by_me_and_downstreams
 
 
 def _GetTensorName2ProducerIdx(in_out_names_sigs, input_tensors, get_local_name):

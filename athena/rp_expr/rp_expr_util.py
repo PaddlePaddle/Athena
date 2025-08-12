@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 def MakeNestedIndexRangeFromLetsListTokenRpExpr(
     rp_expr: LetsListTokenRpExpr,
+    uid_prefix: str = ""
 ) -> t.List[Tree]:
     symbol_token_tensors = [
         tuple(token_ids.tolist()) for token_ids in rp_expr.symbol_token_tensors
@@ -27,6 +28,7 @@ def MakeNestedIndexRangeFromLetsListTokenRpExpr(
             root_token_id=root_token_id,
             token2len=token2len,
             token2children=token2children,
+            uid_prefix=uid_prefix,
         )
         for tensor in rp_expr.body_rp_expr
         for root_token_id in tensor.tolist()
@@ -38,6 +40,7 @@ def MakeNestedIndexRangeFromRangeTokenCtx(
     root_token_id: int,
     token2len: t.Dict[int, int],
     token2children: t.Dict[int, t.List[int]],
+    uid_prefix: str
 ):
     if len(token2children[root_token_id]) == 0:
         assert token2len[root_token_id] == 1
@@ -50,6 +53,7 @@ def MakeNestedIndexRangeFromRangeTokenCtx(
         return child_offset
 
     return Tree(
+        uid=f"{uid_prefix}{root_token_id}",
         node=Range(offset, offset + token2len[root_token_id]),
         children=[
             MakeNestedIndexRangeFromRangeTokenCtx(
@@ -57,6 +61,7 @@ def MakeNestedIndexRangeFromRangeTokenCtx(
                 root_token_id=child_token_id,
                 token2len=token2len,
                 token2children=token2children,
+                uid_prefix=uid_prefix,
             )
             for child_token_id in token2children[root_token_id]
             for child_offfset in [GetThenIncreaseChildOffset(token2len[child_token_id])]

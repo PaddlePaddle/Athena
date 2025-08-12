@@ -1,0 +1,1 @@
+python3.9 -m athena.op_example_input_tensor_meta --ir_programs=/paddle/workspace/zip-dir/jelly/PaddleX_SwinTransformer_large_patch4_window7_224_dy2st_train/exec_programs.py --example_inputs=/paddle/workspace/zip-dir/jelly/PaddleX_SwinTransformer_large_patch4_window7_224_dy2st_train/programs_example_input_tensor_meta.py  --tmp_dir=./tmp --output=./op_example_input_tensor_meta.py

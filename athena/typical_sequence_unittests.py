@@ -35,11 +35,13 @@ flags.DEFINE_string(
     "length_slice", "2:33", "syntax is like python list slice: 0:1, 30:40."
 )
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
+flags.DEFINE_integer("window_size", 64, "pattern window size.")
 
 
 def main(argv):
     for file in glob.glob(f"{FLAGS.output_dir}/test_sequence_*.py"):
-        os.remove(file)
+        # os.remove(file)
+        pass
     assert FLAGS.ir_programs != ""
     assert FLAGS.op_example_input_tensor_meta != ""
     original_programs_file = FLAGS.ir_programs
@@ -60,9 +62,10 @@ def GetSha256sum(content):
 
 
 def PrintToTerminal(name, filepath, unittest):
-    print("# file-splitter-begin-fusion-op-name: ", name, filepath)
-    print(unittest)
-    print("# file-splitter--end--fusion-op-name: ", name, filepath)
+    print("# typical-sequence unittest:", name, filepath)
+    # print("# file-splitter-begin-fusion-op-name: ", name, filepath)
+    # print(unittest)
+    # print("# file-splitter--end--fusion-op-name: ", name, filepath)
 
 
 def WriteToFile(filepath, unittest):
@@ -100,7 +103,7 @@ def GetOutputUnittests(original_programs_file, op_example_inputs_file):
         [MakeStmtPrimitiveId(stmt) for stmt in seq_stmts]
         for _, seq_stmts in program_seq_stmts_list
     ]
-    rp_expr_parser = RpExprParser()
+    rp_expr_parser = RpExprParser(FLAGS.window_size)
     lets_list_rp_expr, token_id2primitive_id = rp_expr_parser(stmts_primitive_ids_list)
     print("\n".join(lets_list_rp_expr.DebugStrings(token_id2primitive_id)))
     trees = MakeNestedIndexRangeFromLetsListTokenRpExpr(lets_list_rp_expr)

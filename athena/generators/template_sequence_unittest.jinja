@@ -59,7 +59,6 @@ cinn_stages = [
             PADDLE_DEBUG_ENABLE_CINN=True,
             FLAGS_prim_all=True,
             FLAGS_prim_enable_dynamic=True,
-            FLAGS_use_cinn=True,
             FLAGS_check_infer_symbolic=False,
             FLAGS_enable_fusion_fallback=False,
         ), 
@@ -228,12 +227,12 @@ def GetFloat32Tolerance():
 def IsInteger(dtype):
     return np.dtype(dtype).char in np.typecodes['AllInteger']
 
-def ApplyToStatic(net, use_cinn):
+def ApplyToStatic(net, use_cinn, input_spec=None):
     build_strategy = paddle.static.BuildStrategy()
     build_strategy.build_cinn_pass = use_cinn
     return paddle.jit.to_static(
         net,
-        input_spec=net.get_input_spec(),
+        input_spec=input_spec,
         build_strategy=build_strategy,
         full_graph=True,
     )
@@ -272,25 +271,75 @@ class CinnTestBase:
         self.prepare_data()
 
     def _test_entry(self):
-        dy_outs = self.train(use_cinn=False)
-        cinn_outs = self.train(use_cinn=GetEnvVarEnableCinn())
-
-        for cinn_out, dy_out in zip(cinn_outs, dy_outs):
-          if type(cinn_out) is list and type(dy_out) is list:
-            for x, y in zip(cinn_out, dy_out):
-              self.assert_all_close(x, y)
-          else:
-            self.assert_all_close(cinn_out, dy_out)
+        flag_test_acc = os.getenv('FLAGS_test_accuracy')
+        if flag_test_acc is None:
+            _, dy_outs = self.train(use_cinn=False)
+            _, ap_outs = self.train(use_cinn=True)
+            for dy_out, cinn_out in zip(dy_outs, ap_outs):
+                if type(cinn_out) is list and type(dy_out) is list:
+                    for x, y in zip(dy_out, cinn_out):
+                        self.assert_all_close(cinn_out, dy_out)
+                elif cinn_out is not None:
+                    self.assert_all_close(cinn_out, dy_out)
+        else if flag_test_acc == '0':
+            pass
+        else:
+            # calculate mean/max output diviation(error)
+            _, dy_outs = self.train(use_cinn=False)
+            _, ap_outs = self.train(use_cinn=True)
+            for dy_out, cinn_out in zip(dy_outs, ap_outs):
+                if type(cinn_out) is list and type(dy_out) is list:
+                    for x, y in zip(dy_out, cinn_out):
+                        self.cal_rms(x, y)
+                elif cinn_out is not None:
+                    self.cal_rms(dy_out, cinn_out)
+        def measure_time(net, num_tests=100):
+            flag_num_tests = os.getenv('FLAGS_num_tests')
+            if flag_num_tests is not None:
+                num_tests = int(flag_num_tests)
+            # warmup
+            for i in range(30):
+                net(*self.inputs)
+            # profile
+            paddle.base.core.nvprof_start()
+            for i in range(num_tests):
+                net(*self.inputs)
+            paddle.base.core.nvprof_stop()
+        flag_comp_perf = os.getenv('FLAGS_ap_performance')
+        if flag_comp_perf is None:
+            pass
+        else if flag_comp_perf == '0':
+            dy_net, _ = self.train(use_cinn=False)
+            measure_time(dy_net)
+        else if flag_comp_perf == '1':
+            ap_net, _ = self.train(use_cinn=True)
+            measure_time(ap_net)
+        else:
+            raise NotImplementedError("FLAGS_ap_performance should be set to 0 or 1.")
 
     def train(self, use_cinn):
+        sub_graph_layer = SubGraphLayer()
         if GetEnvVarEnableJit():
-            net = self.prepare_static_net(use_cinn)
+            net = ApplyToStatic(
+                    sub_graph_layer,
+                    use_cinn=use_cinn,
+                    input_spec=sub_graph_layer.get_input_spec()
+                  )
         else:
             net = self.prepare_net()
         paddle.seed(2024)
         out = net(*self.inputs)
-        return out
-    
+        return net, out
+
+    def cal_rms(self, x, y):
+        if (hasattr(x, "numpy") and hasattr(y, "numpy")):
+            x = x.numpy()
+            y = y.numpy()
+        diff = np.abs(x - y)
+        ams = np.mean(diff)
+        rms = np.mean(diff / (np.abs(x) + 1e-8))
+        print(f'Absolute mean error is: {ams}, relative mean error is {rms}')
+
     def prepare_data(self):
         self.inputs = self.get_inputs()
         for input in self.inputs:

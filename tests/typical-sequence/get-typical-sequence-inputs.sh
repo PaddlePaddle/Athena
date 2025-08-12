@@ -1,0 +1,1 @@
+python3.9 -m athena.typical_sequence_unittests --length_slice="2:17" --ir_programs=/paddle/workspace/zip-dir/jelly/PaddleX_SwinTransformer_large_patch4_window7_224_dy2st_train/exec_programs.py --op_example_input_tensor_meta=./op_example_input_tensor_meta.py --output_dir=./output

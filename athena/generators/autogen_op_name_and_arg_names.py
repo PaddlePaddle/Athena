@@ -2275,7 +2275,7 @@ phi_ops_yaml_ops = [
         "prod",
         ("Tensor", "x"),
         ("IntArray", "dims"),
-        ("bool", "keep_dim"),
+        ("bool", "keepdim"),
         ("bool", "reduce_all"),
     ),
     (
@@ -2558,6 +2558,7 @@ phi_ops_yaml_ops = [
         ("bool", "multi_precision"),
     ),
     ("shape", ("Tensor", "input")),
+    ("shape64", ("Tensor", "input")),
     (
         "shard_index",
         ("Tensor", "input"),

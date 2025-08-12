@@ -20,6 +20,7 @@ class Range(NestedRange):
 
 @dataclass
 class Tree(NestedRange):
+    uid: str
     node: Range
     children: t.List[NestedRange]
 

@@ -38,7 +38,7 @@ def main(argv):
         else f"{FLAGS.output_dir}/op_example_input_meta_result.py"
     )
     System(
-        f"cat {FLAGS.output_dir}/result_{FLAGS.input_file_prefix}*.py 2>/dev/null | tee {concated_out_file}"
+        f"cat {FLAGS.output_dir}/result_{FLAGS.input_file_prefix}*.py 2>/dev/null > {concated_out_file}"
     )
     print(f"# dump op example input meta into {concated_out_file}")
 

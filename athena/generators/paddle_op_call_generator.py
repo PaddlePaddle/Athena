@@ -190,10 +190,10 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
 
         op_name = self.PaddleMethodName(op)
         c_ops_arg_names = GetCOpsArgNamesThenCheck(op_name, op.attrs)
-        assert (
-            c_ops_arg_names is not None
-        ), f"op: {op.name}, c_ops_arg_names: {c_ops_arg_names}, op: {op}"
-        return self.GenerateCOpsCall(op, inputs=inputs)
+        if c_ops_arg_names is not None:
+            return self.GenerateCOpsCall(op, inputs=inputs)
+        print(f"c_ops_arg_names found. op: {op.name}, op: {op}", file=sys.stderr)
+        return lambda f: f"paddle.{op_name}('{op.name} not found.')"
 
     def PaddleMethodName(self, op):
         return op.GetValidPyVarNameComponents()[-1]

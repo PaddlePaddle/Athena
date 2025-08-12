@@ -87,7 +87,11 @@ class PaddleFuncBodyGenerator:
             self.func, free_vars, args, get_local_name
         )
         self.op_id2op_func_in_out_names_signature = GetOpId2OpPipeInOutNamesSignature(
-            self.func, free_vars, args, get_local_name
+            self.op_id2used_by_me_and_downstream,
+            self.func,
+            free_vars,
+            args,
+            get_local_name,
         )
         self.block_op_calls = BlockOpCallsExtractor().Extract(
             self.func, free_vars, args

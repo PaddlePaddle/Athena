@@ -44,9 +44,10 @@ def GetSha256sum(content):
 
 
 def PrintToTerminal(name, filepath, unittest):
-    print("# file-splitter-begin-fusion-op-name: ", name, filepath)
-    print(unittest)
-    print("# file-splitter--end--fusion-op-name: ", name, filepath)
+    print("# file-splitter-fusion-op-name: ", name, filepath)
+    # print("# file-splitter-begin-fusion-op-name: ", name, filepath)
+    # print(unittest)
+    # print("# file-splitter--end--fusion-op-name: ", name, filepath)
 
 
 def WriteToFile(filepath, unittest):
@@ -158,7 +159,17 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
         generator = OpExampleInputMetaScriptGenerator(
             ir_program_group, example_inputs_meta_getter
         )
+        print(
+            "OpExampleInputMetaScriptGenerator Generating pir_programs:",
+            ", ".join(type(x).__name__ for x in ir_program_group),
+            file=sys.stderr,
+        )
         name, unittest = generator.Generate()
+        print(
+            "OpExampleInputMetaScriptGenerator Generated pir_programs:",
+            ", ".join(type(x).__name__ for x in ir_program_group),
+            file=sys.stderr,
+        )
         yield name, unittest
 
 
