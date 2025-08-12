@@ -1,0 +1,119 @@
+{%- set sig = seq_func_desc.ops_func_signature %}
+
+{% macro get_input_tensor_instance(tensor_meta) -%}
+{%- set shape = tensor_meta.shape -%}
+{%- set dtype = tensor_meta.dtype -%}
+{%- set big_dtype = tensor_meta.big_dtype -%}
+{%- set data = tensor_meta.data -%}
+{%- set min = tensor_meta.min -%}
+{%- set max = tensor_meta.max -%}
+{%- if data != None -%}
+    {%- if data == [] and shape == [] -%}
+    paddle.to_tensor({{data}}, dtype='{{dtype}}')
+    {%- else -%}
+    paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
+    {%- endif -%}
+{%- elif big_dtype == "bool" -%}
+    paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
+{%- elif big_dtype == "int64" -%}
+    paddle.cast(paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='int64'), '{{dtype}}')
+{%- elif big_dtype == "float64" -%}
+    paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
+{%- endif -%}
+{%- endmacro %}
+
+{% macro get_operand_value(operand_id) -%}
+{%- set data = sig.example_input_data4operand_id(operand_id) -%}
+{%- set immediate_value = sig.immediate_value4operand_id(operand_id, data) -%}
+{%- set null_tensor_id = sig.null_tensor_id4operand_id(operand_id) -%}
+{%- set operand_tensor_id = sig.operand_tensor_id4operand_id(operand_id) -%}
+{%- set tensor_list_member_ids = sig.tensor_list_member_ids4operand_id(operand_id) -%}
+{%- if data != None and immediate_value != None -%}
+    {{immediate_value}}
+{%- elif null_tensor_id != None -%}
+    None
+{%- elif operand_tensor_id != None -%}
+    {{tensor_name_converter(sig.tensor_name4tensor_id(operand_tensor_id))}}
+{%- elif tensor_list_member_ids != None -%}
+    [{%- for member_tensor_id in tensor_list_member_ids -%}
+    {%- if loop.index0 > 0 -%}{{", "}}{%- endif -%}
+    {{tensor_name_converter(sig.tensor_name4tensor_id(member_tensor_id))}}
+    {%- endfor -%}]
+{%- endif -%}
+{%- endmacro %}
+
+
+{%- for tensor_id in sig.tensor_ids %}
+{%- if 'data' in sig.tensor_name4tensor_id(tensor_id) %}
+{%- set example_tensor_meta = sig.example_input_meta4tensor_id(tensor_id) %}
+{%- set shape, dtype = sig.input_spec_shape_dtype4tensor_id(tensor_id) %}
+class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
+    name = "{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}"
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    data = None
+{{ '\n' }}
+{%- endif %}
+{%- endfor %}
+
+# --- seperate line ----
+{%- for tensor_id in sig.tensor_ids %}
+{%- if 'data' not in sig.tensor_name4tensor_id(tensor_id) %}
+{%- set example_tensor_meta = sig.example_input_meta4tensor_id(tensor_id) %}
+{%- set shape, dtype = sig.input_spec_shape_dtype4tensor_id(tensor_id) %}
+class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
+    name = "{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}"
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    data = None
+{{ '\n' }}
+{%- endif %}
+{%- endfor %}
+
+# --- seperate line ----
+import paddle
+
+
+class GraphModule(paddle.nn.Layer):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self{{",\n\t\t"}}
+        {%- for tensor_id in sig.tensor_ids -%}
+        {%- if loop.index0 > 0 -%}{{",\n\t\t "}}{%- endif -%}
+        {{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}: paddle.Tensor
+        {%- endfor -%}
+    ):
+        {%- for tensor_id in sig.tensor_ids -%}
+        {%- set data, dtype = sig.immediate_value4int_array_member_id(tensor_id) -%}
+        {%- if data != None %}
+        {{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}} = paddle._C_ops.full_int_array({{data}}, paddle.{{dtype}}, paddle.core.CPUPlace())
+        {%- endif %}
+        {%- endfor %}
+
+        {%- for operand_id in sig.operand_ids %}
+        {%- if tensor_name_converter(sig.tensor_name4operand_id(operand_id)) != get_operand_value(operand_id) %}
+        {{tensor_name_converter(sig.tensor_name4operand_id(operand_id))}} = {{get_operand_value(operand_id)}}
+        {%- endif %}
+        {%- endfor %}
+
+        {%- for stmt in seq_func_desc.seq_stmts %}
+        {%- if (stmt.pycode | length) > 0%}
+        # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+        {%- endif %}
+        {%- for pycode in stmt.pycode %}
+        {%- if pycode.num_tabs == 0 %}
+        {{pycode.pycode(tensor_name_converter)}}
+        {%- elif pycode.num_tabs == 1 %}
+            {{pycode.pycode(tensor_name_converter)}}
+        {%- elif pycode.num_tabs == 2 %}
+                {{pycode.pycode(tensor_name_converter)}}
+        {%- else %}
+        raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
+        {%- endif %}
+        {%- endfor %}
+        {%- if (seq_func_desc.get_unused_tensor_name(stmt) | length) > 0 %}
+        del {{ seq_func_desc.get_unused_tensor_name(stmt) | py_map(tensor_name_converter) | join(', ') }}
+        {%- endif %}
+        {% endfor %}
+        return {{ seq_func_desc.output_tensor_names | py_map(tensor_name_converter) | join(', ') }}

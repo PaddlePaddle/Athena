@@ -46,3 +46,10 @@ Primitive op unittests are generated from pir programs file and op example input
 python3.9 -m athena.primitive_op_unittests --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
 ```
 Details see `tests/test_primitive_op_unittests.sh`.
+
+
+### Full graph unittests 
+Full graph unittests  are generated from pir programs file and op example input tensor meta file.
+```bash
+python3.9 -m athena.full_graph_unittests --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
+```
