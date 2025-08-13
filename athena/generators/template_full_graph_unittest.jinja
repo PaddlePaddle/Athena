@@ -80,7 +80,7 @@ class GraphModule(paddle.nn.Layer):
 
     def forward(self{{",\n\t\t"}}
         {%- for tensor_id in sig.tensor_ids -%}
-        {%- if loop.index0 > 0 -%}{{",\n\t\t "}}{%- endif -%}
+        {%- if loop.index0 > 0 -%}{{",\n\t\t"}}{%- endif -%}
         {{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}: paddle.Tensor
         {%- endfor -%}
     ):
