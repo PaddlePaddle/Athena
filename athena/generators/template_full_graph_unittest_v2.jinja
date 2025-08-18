@@ -30,8 +30,8 @@
 {%- elif big_dtype == "float64" -%}
     shape = {{shape}}
     dtype = '{{dtype}}'
-    min = {{min}}
-    max = {{max}}
+    low = {{min}}
+    high = {{max}}
     data = None
 {%- endif -%}
 {%- endmacro %}
