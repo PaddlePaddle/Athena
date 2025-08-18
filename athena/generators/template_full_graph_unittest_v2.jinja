@@ -43,7 +43,7 @@
 
 {%- for arg_name in block.input_arg_names %}
 {%- if "data" in arg_name %}
-class Program_weight_tensor_{{arg_name}}
+class Program_weight_tensor_{{arg_name}}:
     name = "{{arg_name}}"
 {%- set input_idx = loop.index0 %}
     {{get_input_tensor_instance(block, block_idx, input_idx)}}
@@ -61,7 +61,7 @@ class Program_weight_tensor_{{arg_name}}
 
 {%- for arg_name in block.input_arg_names %}
 {%- if "data" not in arg_name %}
-class Program_weight_tensor_{{arg_name}}
+class Program_weight_tensor_{{arg_name}}:
     name = "{{arg_name}}"
 {%- set input_idx = loop.index0 %}
     {{get_input_tensor_instance(block, block_idx, input_idx)}}
