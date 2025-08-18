@@ -1,0 +1,103 @@
+{% macro get_input_tensor_instance(block, block_idx, input_idx) -%}
+{%- set shape = block.input_tensor_descs[input_idx].shape -%}
+{%- set dtype = block.input_tensor_descs[input_idx].dtype -%}
+{%- set big_dtype = block.input_tensor_descs[input_idx].big_dtype -%}
+{%- set data = block.input_tensor_descs[input_idx].data -%}
+{%- set min = block.input_tensor_descs[input_idx].min -%}
+{%- set max = block.input_tensor_descs[input_idx].max -%}
+{%- if data != None -%}
+  {%- if data == [] and shape == [] -%}
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    data = {{data}}
+  {%- else -%}
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    data = {{data}}
+  {%- endif -%}
+{%- elif big_dtype == "bool" -%}
+    shape = {{shape}}
+    dtype = 'bool'
+    low = 0
+    high = 2
+    data = None
+{%- elif big_dtype == "int64" -%}
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    low = {{min}}
+    high = {{max}}
+    data = None
+{%- elif big_dtype == "float64" -%}
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    min = {{min}}
+    max = {{max}}
+    data = None
+{%- endif -%}
+{%- endmacro %}
+
+
+{%- for block in blocks %}
+{%- set block_idx = loop.index0 %}
+{%- if block.is_entry_block %}
+
+{%- for arg_name in block.input_arg_names %}
+{%- if "data" in arg_name %}
+class Program_weight_tensor_{{arg_name}}
+    name = "{{arg_name}}"
+{%- set input_idx = loop.index0 %}
+    {{get_input_tensor_instance(block, block_idx, input_idx)}}
+{%- endif %}
+{%- endfor %}
+
+{%- endif %}
+{%- endfor %}
+
+# --- seperate line ----
+
+{%- for block in blocks %}
+{%- set block_idx = loop.index0 %}
+{%- if block.is_entry_block %}
+
+{%- for arg_name in block.input_arg_names %}
+{%- if "data" not in arg_name %}
+class Program_weight_tensor_{{arg_name}}
+    name = "{{arg_name}}"
+{%- set input_idx = loop.index0 %}
+    {{get_input_tensor_instance(block, block_idx, input_idx)}}
+{%- endif %}
+{%- endfor %}
+
+{%- endif %}
+{%- endfor %}
+
+# --- seperate line ----
+
+import paddle
+
+
+class GraphModule(paddle.nn.Layer):
+    def __init__(self):
+        super().__init__()
+{%- for block in blocks %}
+{%- set block_idx = loop.index0 %}
+    def forward(self, {{block.input_arg_names | join(", ")}}):
+    {%- for stmt in block.stmts %}
+        {%- if (stmt.pycode | length) > 0%}
+
+        # {{stmt.op_name}}: ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
+        {%- endif %}
+        {%- for pycode in stmt.pycode %}
+        {%- if pycode.num_tabs == 0 %}
+        {{pycode.pycode(tensor_name_converter)}}
+        {%- elif pycode.num_tabs == 1 %}
+            {{pycode.pycode(tensor_name_converter)}}
+        {%- elif pycode.num_tabs == 2 %}
+                {{pycode.pycode(tensor_name_converter)}}
+        {%- else %}
+        raise NotImplementedError("unsupported indent size {{pycode.num_tabs}}")
+        {%- endif %}
+        {%- endfor %}
+    {%- endfor %}
+        return {{block.output_arg_names | join(", ")}}
+{%- endfor %}
