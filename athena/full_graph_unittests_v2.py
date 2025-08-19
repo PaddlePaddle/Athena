@@ -28,26 +28,33 @@ def main(argv):
     os.environ["ATHENA_ENABLE_EARLY_RETURN"] = str(FLAGS.enable_early_return)
     original_programs_file = FLAGS.ir_programs
     example_inputs_file = FLAGS.example_inputs
-    for file in glob.glob(f"{FLAGS.output_dir}/test_module_op_*.py"):
-        os.remove(file)
     seg_counter = defaultdict(lambda: itertools.count())
-    for i, (uid, unittest) in enumerate(GetOutputUnittests(
+    for module_id, (uid, unittest) in enumerate(GetOutputUnittests(
         original_programs_file, example_inputs_file
     )):
+        if module_id == 0:
+            sub_dir_path = f"{FLAGS.output_dir}"
+        else:
+            sub_dir_path = f"{FLAGS.output_dir}_{module_id}"
         inputs_meta, weighs_meta, model_arch = unittest.split('# --- seperate line ----\n')
-        WriteToFile(f"{FLAGS.output_dir}/model.py", model_arch)
-        WriteToFile(f"{FLAGS.output_dir}/weight_meta.py", weighs_meta.rstrip('\n\n\n')+'\n')
-        WriteToFile(f"{FLAGS.output_dir}/input_meta.py", inputs_meta.strip('\n\n\n')+'\n')
+        for file in glob.glob(f"{sub_dir_path}/*"):
+            if os.path.isfile(file): 
+                os.remove(file)
+        if not os.path.exists(sub_dir_path):
+            os.mkdir(sub_dir_path)
+        WriteToFile(f"{sub_dir_path}/model.py", model_arch)
+        WriteToFile(f"{sub_dir_path}/weight_meta.py", weighs_meta.rstrip('\n\n\n')+'\n')
+        WriteToFile(f"{sub_dir_path}/input_meta.py", inputs_meta.strip('\n\n\n')+'\n')
+        metadata = {
+            "framework": "paddle",
+            "num_devices_required": 1,
+            "num_nodes_required": 1,
+        }
+        with open(os.path.join(sub_dir_path, "graph_net.json"), "w") as f:
+            json.dump(metadata, f, indent=4)
+        print('flag', f"{sub_dir_path}/model.py")
         unique_name = f"{uid}_{next(seg_counter[uid])}"
-        print('flag', f"{FLAGS.output_dir}/model.py")
-        PrintToTerminal(unique_name, f"{FLAGS.output_dir}/model.py", unittest)
-    metadata = {
-        "framework": "paddle",
-        "num_devices_required": 1,
-        "num_nodes_required": 1,
-    }
-    with open(os.path.join(FLAGS.output_dir, "graph_net.json"), "w") as f:
-        json.dump(metadata, f, indent=4)
+        PrintToTerminal(unique_name, f"{sub_dir_path}/model.py", unittest)
 
 
 
@@ -85,26 +92,33 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
 
     def MakeUnittestGenerator(ir_program):
         return ModuleOpUnittestGenerator(ir_program, example_inputs_meta_getter)
-    # print(type(list(GetProgramClasses(original_programs_file))[0]))
-    # exit(0)
+
     def CountNonBuiltinOps(ir_program):
         non_bulitin_ops = 0
+        out_ops = 0
         for name, op in vars(ir_program).items():
             if not isinstance(op, ir_op.Op):
                 continue
             if not op.name.startswith("builtin."):
                 non_bulitin_ops += 1
-        return non_bulitin_ops
-    ir_programs = {
-        ir_program:CountNonBuiltinOps(ir_program)
-        for cls in list(GetProgramClasses(original_programs_file))
-        for ir_program in [cls()]
-        if not IsBackwardProgram(ir_program)
-        if AllInputOutputTypesSupported(ir_program)
-    }
-    print('max ir op number:', max(ir_programs.values()) )
-    ir_program = max(ir_programs.items(), key = lambda item:item[1])[0]
-    ir_programs = [ir_program]
+            elif op.name == 'builtin.shadow_output':
+                out_ops += 1
+        return non_bulitin_ops, out_ops
+
+    ir_programs_dict = dict()
+    for cls in list(GetProgramClasses(original_programs_file)):
+        ir_program = cls()
+        if not IsBackwardProgram(ir_program) and AllInputOutputTypesSupported(ir_program):
+            ops, outs = CountNonBuiltinOps(ir_program)
+            # remove the ir_program which stores intermediate variables
+            if ops in ir_programs_dict.keys() and outs < ir_programs_dict[ops][0]:
+                ir_programs_dict[ops] = [outs, ir_program]
+            elif ops not in ir_programs_dict.keys():
+                ir_programs_dict[ops] = [outs, ir_program]
+            else:
+                pass
+    # remove the small ir_program
+    ir_programs = [v[1] for k, v in ir_programs_dict.items() if k > 6]
     # raise ValueError("The longest ir program is not forward program.")
     yield from (
         (GetSha256sum(",".join(op_names))[0:32], unittest)
