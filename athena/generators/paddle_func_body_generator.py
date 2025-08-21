@@ -1,17 +1,15 @@
 from athena.ir_converters.paddle_op_converter import ConvertToPaddleOp
-from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
 from athena.generators.paddle_op_call_generator import PaddleOpCallGenerator
 from athena.generators.global_tensor_converter import GlobalTensorConverter
 from athena.util.name_generator import NameGenerator
 from dataclasses import dataclass
-from typing import List, Union, Callable
+from typing import List, Callable
 from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.tensor_topo import (
     GetOpId2TensorNamesUsedByMeAndDownstream,
     GetOpId2OpPipeInOutNamesSignature,
     OpPipeInOutNamesSignature,
 )
-from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
 from athena.util.block_op_calls_extractor import BlockOpCallsExtractor
 import athena.util.lambda_util as fn
@@ -143,12 +141,12 @@ class PaddleFuncBodyGenerator:
         arg_str = fn.join_map([t.name for t in args])
         cond_name = cond.name
         return [
-            self.Indent0(lambda f: f"import os"),
+            self.Indent0(lambda f: "import os"),
             self.Indent0(
-                lambda f: f"ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
+                lambda f: "ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
             ),
             self.Indent0(
-                lambda f: f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
+                lambda f: "kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
             ),
             self.Indent0(lambda f: f"while_loop_counter_{op.op_id} = 0"),
             self.Indent0(lambda f: f"while {f(cond_name)}:"),
@@ -159,8 +157,8 @@ class PaddleFuncBodyGenerator:
             self.Indent1(
                 lambda f: f"if while_loop_counter_{op.op_id} > kWhileLoopLimit:"
             ),
-            self.Indent2(lambda f: f"break"),
-            self.Indent1(lambda f: f""),
+            self.Indent2(lambda f: "break"),
+            self.Indent1(lambda f: ""),
             self.Indent0(lambda f: f"{output_unpack_str(f)}, = {arg_str(f)},"),
         ]
 
@@ -196,7 +194,7 @@ class PaddleFuncBodyGenerator:
             self.Indent1(
                 lambda f: f"{ret(f)}, = self.{true_block_name}({true_branch_input_names(f)})"
             ),
-            self.Indent0(lambda f: f"else:"),
+            self.Indent0(lambda f: "else:"),
             self.Indent1(
                 lambda f: f"{ret(f)}, = self.{false_block_name}({false_branch_input_names(f)})"
             ),
@@ -215,6 +213,7 @@ class PaddleFuncBodyGenerator:
         return IndentedPyCode(pycode=pycode, num_tabs=2)
 
     def CollectPyCodeStmt(self, GetStmtPyCode, op, *input_tensors, **kwargs):
+        self.RemoveInvalidOutputTensorsForCinn(op, *input_tensors)
         outputs_type_strs = [t.GetShortStr() for t in op.output_types]
         inputs_type_strs = [t.GetShortStr() for t in op.input_types]
         outputs_shape_symbol_strs = [
@@ -275,6 +274,43 @@ class PaddleFuncBodyGenerator:
             )
         )
         return op.GetResults()
+
+    def RemoveInvalidOutputTensorsForCinn(self, op, *input_tensors):
+        invalid_tensor_names = []
+        if op.name == "pd_op.batch_norm_":
+            assert len(op.GetResults()) == 6, "batch_norm has 6 outputs."
+            is_test = op.attrs["is_test"].value
+            trainable_statistics = op.attrs["trainable_statistics"].value
+            use_global_stats = op.attrs["use_global_stats"].value
+            use_run_stats = (is_test and not trainable_statistics) or use_global_stats
+            # the 3-th and 4-th output (saved_mean, saved_variance) are avaiable when use_run_stats is False.
+            if use_run_stats:
+                invalid_tensor_names.append(
+                    self.tensor_converter.ConvertToLocalTensor(op.GetResults()[3]).name
+                )
+                invalid_tensor_names.append(
+                    self.tensor_converter.ConvertToLocalTensor(op.GetResults()[4]).name
+                )
+            # the 5-th output is reserve_space which is only used in phi kernel.
+            invalid_tensor_names.append(
+                self.tensor_converter.ConvertToLocalTensor(op.GetResults()[5]).name
+            )
+        elif op.name == "pd_op.full_int_array":
+            # output of pd_op.full_int_array is a python integer list.
+            invalid_tensor_names.append(
+                self.tensor_converter.ConvertToLocalTensor(op.GetResults()[0]).name
+            )
+        elif op.name == "pd_op.assign":
+            # for the case: pd_op.full_int_array -> pd_op.assign
+            # then the output of pd_op.assign is a python integer list.
+            out = self.tensor_converter.ConvertToLocalTensor(op.GetResults()[0])
+            for input_tensor in input_tensors:
+                if input_tensor.defining_op_name == "pd_op.full_int_array":
+                    invalid_tensor_names.append(out.name)
+
+        for tensor in self.output_local_tensors:
+            if tensor.name in invalid_tensor_names:
+                self.output_local_tensors.remove(tensor)
 
     def GetStmtPyCode(
         self, local_output_tensor_names, op, *input_local_tensors, **kwargs

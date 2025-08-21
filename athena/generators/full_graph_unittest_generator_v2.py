@@ -1,15 +1,13 @@
-from contextlib import contextmanager
 from athena.generators.blocks_generator import BlocksGenerator
 from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
 from athena.generators.paddle_block_unittest_stmts_generator import (
     PaddleBlockUnittestStmtsGenerator,
 )
-import athena.ir.ir_type as ir_type
 from athena.util.input_tensor_desc import MakeInputTensorDesc
 from athena.generators.block_name_generator import BlockNameGenerator
 from collections import namedtuple
-from jinja2 import Template
 import os
+import jinja2
 
 BlockDescriptor = namedtuple(
     "BlockDescriptor",
@@ -21,6 +19,7 @@ BlockDescriptor = namedtuple(
         "stmts",
         "output_arg_names",
         "input_spec_shape_dtypes",
+        "get_unused_tensor_name",
     ],
 )
 
@@ -34,7 +33,6 @@ InputSpecDesc = namedtuple(
 
 
 class ModuleOpUnittestGenerator:
-
     def __init__(self, ir_program, example_inputs_meta_getter):
         self.example_inputs_meta_getter = example_inputs_meta_getter
         self.name = type(ir_program).__name__
@@ -44,7 +42,6 @@ class ModuleOpUnittestGenerator:
         self.unittest_stmts_gen = PaddleBlockUnittestStmtsGenerator(self.block_name_gen)
 
     def Generate(self):
-
         def GetInstanceShape(tensor):
             if tensor.arg_name_as_input is not None:
                 tensor_meta = self.example_inputs_meta_getter.Get(
@@ -57,7 +54,9 @@ class ModuleOpUnittestGenerator:
                 return [(dim if dim >= 0 else example_dim) for dim in tensor.shape]
 
         def GetInstanceData(tensor):
-            if tensor.arg_name_as_input is None:
+            numel = 1
+            [numel := numel * x for x in GetInstanceShape(tensor)]
+            if tensor.arg_name_as_input is None or numel < 0 or numel > 64:
                 return None
             tensor_meta = self.example_inputs_meta_getter.Get(
                 program_id=self.program_id,
@@ -88,6 +87,15 @@ class ModuleOpUnittestGenerator:
                 )
                 for input_tensor in input_local_tensors
             ]
+
+            def GetUnusedTensorName(stmt):
+                return sorted(
+                    list(
+                        set(stmt.tensors_used_by_me_and_downstream)
+                        - set(stmt.tensors_used_by_downstream)
+                    )
+                )
+
             return BlockDescriptor(
                 is_entry_block=block.is_entry_block,
                 block_name=self.block_name_gen.Generate(
@@ -98,6 +106,7 @@ class ModuleOpUnittestGenerator:
                 stmts=stmts,
                 output_arg_names=[tensor.name for tensor in output_local_tensors],
                 input_spec_shape_dtypes=input_spec_shape_dtypes,
+                get_unused_tensor_name=GetUnusedTensorName,
             )
 
         blocks = [
@@ -106,23 +115,16 @@ class ModuleOpUnittestGenerator:
         return self._RenderTemplate(blocks=blocks)
 
     def _RenderTemplate(self, blocks):
-        template = self._GetTemplate("template_full_graph_unittest_v2.jinja")
+        template = jinja_env.get_template("template_full_graph_unittest_v2.jinja")
         return template.render(
             blocks=blocks,
-            enable_early_return=self.EnableEarlyReturn(),
             tensor_name_converter=lambda x: x,
         )
 
-    def EnableEarlyReturn(self):
-        return os.getenv("ATHENA_ENABLE_EARLY_RETURN") not in {
-            "0",
-            "false",
-            "False",
-            "off",
-            "OFF",
-        }
 
-    def _GetTemplate(self, template_name):
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-        with open(f"{dir_path}/{template_name}", "r") as f:
-            return Template(f.read())
+jinja_env = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(
+        searchpath=os.path.dirname(os.path.realpath(__file__))
+    )
+)
+jinja_env.filters["py_map"] = lambda values, f: map(f, values)
