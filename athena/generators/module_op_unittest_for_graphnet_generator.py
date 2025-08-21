@@ -8,6 +8,7 @@ from athena.generators.block_name_generator import BlockNameGenerator
 from collections import namedtuple
 import os
 import jinja2
+import numpy as np
 
 BlockDescriptor = namedtuple(
     "BlockDescriptor",
@@ -54,21 +55,30 @@ class ModuleOpUnittestForGraphnetGenerator:
                 return [(dim if dim >= 0 else example_dim) for dim in tensor.shape]
 
         def GetInstanceData(tensor):
-            numel = 1
-            [numel := numel * x for x in GetInstanceShape(tensor)]
-            if tensor.arg_name_as_input is None or numel < 0 or numel > 64:
-                return None
+            if tensor.arg_name_as_input is None:
+                return None, None, None
             tensor_meta = self.example_inputs_meta_getter.Get(
                 program_id=self.program_id,
                 input_tensor=tensor,
             )
-            return tensor_meta.data
+            data, max_value, min_value = tensor_meta.data, None, None
+            if data is not None and isinstance(data, list) and len(data) > 0:
+                array = np.array(data)
+                max_value = np.max(array)
+                min_value = np.min(array)
+                if len(data) > 64:
+                    # Don't save all the values for large array.
+                    data = None
+            return data, max_value, min_value
 
         def GetInputTensorDesc(input_tensor):
+            data, max_value, min_value = GetInstanceData(input_tensor)
             return MakeInputTensorDesc(
                 shape=GetInstanceShape(input_tensor),
                 dtype=input_tensor.dtype,
-                data=GetInstanceData(input_tensor),
+                data=data,
+                max_value=max_value,
+                min_value=min_value,
             )
 
         def MakeBlockDescriptor(block):

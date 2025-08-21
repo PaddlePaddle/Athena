@@ -1,5 +1,4 @@
 from collections import namedtuple
-import athena.ir.ir_type as ir_type
 
 InputTensorDesc = namedtuple(
     "InputTensorDesc",
@@ -14,14 +13,14 @@ InputTensorDesc = namedtuple(
 )
 
 
-def MakeInputTensorDesc(shape, dtype, data):
+def MakeInputTensorDesc(shape, dtype, data, max_value=None, min_value=None):
     return InputTensorDesc(
         shape=shape,
         dtype=dtype,
         big_dtype=_GetBigType(dtype),
         data=data,
-        min=getattr(InitMinGetter, dtype)(),
-        max=getattr(InitMaxGetter, dtype)(),
+        min=getattr(InitMinGetter, dtype)() if min_value is None else min_value,
+        max=getattr(InitMaxGetter, dtype)() if max_value is None else max_value,
     )
 
 
