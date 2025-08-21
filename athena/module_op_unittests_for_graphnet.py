@@ -132,7 +132,6 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
 
     # remove the small ir_program
     ir_programs = [v[1] for k, v in ir_programs_dict.items() if k > 6]
-    # raise ValueError("The longest ir program is not forward program.")
     yield from (
         (GetSha256sum(",".join(op_names))[0:32], unittest)
         for ir_program in ir_programs
