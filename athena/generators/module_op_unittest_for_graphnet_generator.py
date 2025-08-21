@@ -32,7 +32,7 @@ InputSpecDesc = namedtuple(
 )
 
 
-class ModuleOpUnittestGenerator:
+class ModuleOpUnittestForGraphnetGenerator:
     def __init__(self, ir_program, example_inputs_meta_getter):
         self.example_inputs_meta_getter = example_inputs_meta_getter
         self.name = type(ir_program).__name__
@@ -115,7 +115,9 @@ class ModuleOpUnittestGenerator:
         return self._RenderTemplate(blocks=blocks)
 
     def _RenderTemplate(self, blocks):
-        template = jinja_env.get_template("template_full_graph_unittest_v2.jinja")
+        template = jinja_env.get_template(
+            "template_module_op_unittest_for_graphnet.jinja"
+        )
         return template.render(
             blocks=blocks,
             tensor_name_converter=lambda x: x,

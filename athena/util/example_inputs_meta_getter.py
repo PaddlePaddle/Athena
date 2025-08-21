@@ -76,3 +76,12 @@ class ExampleInputsMetaGetter:
                 data=record.data if hasattr(record, "data") else None,
             )
         return input_meta_key2value
+
+
+def MakeExampleInputsMetaGetter(name_and_classes):
+    classes = [
+        cls
+        for name, cls in name_and_classes
+        if name.startswith("PirProgram_example_input_tensor_meta_")
+    ]
+    return ExampleInputsMetaGetter(records=classes)

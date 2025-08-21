@@ -1,8 +1,11 @@
 from athena.util.load_pir_py_classes import GetProgramClasses, GetClasses
-from athena.util.example_inputs_meta_getter import ExampleInputsMetaGetter
-from athena.generators.full_graph_unittest_generator_v2 import ModuleOpUnittestGenerator
+from athena.util.example_inputs_meta_getter import (
+    MakeExampleInputsMetaGetter,
+)
+from athena.generators.module_op_unittest_for_graphnet_generator import (
+    ModuleOpUnittestForGraphnetGenerator,
+)
 import athena.ir.ir_op as ir_op
-import sys
 from absl import app
 from absl import flags
 import hashlib
@@ -29,22 +32,26 @@ def main(argv):
     original_programs_file = FLAGS.ir_programs
     example_inputs_file = FLAGS.example_inputs
     seg_counter = defaultdict(lambda: itertools.count())
-    for module_id, (uid, unittest) in enumerate(GetOutputUnittests(
-        original_programs_file, example_inputs_file
-    )):
+    for module_id, (uid, unittest) in enumerate(
+        GetOutputUnittests(original_programs_file, example_inputs_file)
+    ):
         if module_id == 0:
             sub_dir_path = f"{FLAGS.output_dir}"
         else:
             sub_dir_path = f"{FLAGS.output_dir}_{module_id}"
-        inputs_meta, weighs_meta, model_arch = unittest.split('# --- seperate line ----\n')
+        inputs_meta, weighs_meta, model_arch = unittest.split(
+            "# --- seperate line ----\n"
+        )
         for file in glob.glob(f"{sub_dir_path}/*"):
-            if os.path.isfile(file): 
+            if os.path.isfile(file):
                 os.remove(file)
         if not os.path.exists(sub_dir_path):
             os.mkdir(sub_dir_path)
         WriteToFile(f"{sub_dir_path}/model.py", model_arch)
-        WriteToFile(f"{sub_dir_path}/weight_meta.py", weighs_meta.rstrip('\n\n\n')+'\n')
-        WriteToFile(f"{sub_dir_path}/input_meta.py", inputs_meta.strip('\n\n\n')+'\n')
+        WriteToFile(
+            f"{sub_dir_path}/weight_meta.py", weighs_meta.rstrip("\n\n\n") + "\n"
+        )
+        WriteToFile(f"{sub_dir_path}/input_meta.py", inputs_meta.strip("\n\n\n") + "\n")
         metadata = {
             "framework": "paddle",
             "num_devices_required": 1,
@@ -52,10 +59,9 @@ def main(argv):
         }
         with open(os.path.join(sub_dir_path, "graph_net.json"), "w") as f:
             json.dump(metadata, f, indent=4)
-        print('flag', f"{sub_dir_path}/model.py")
+        print("flag", f"{sub_dir_path}/model.py")
         unique_name = f"{uid}_{next(seg_counter[uid])}"
         PrintToTerminal(unique_name, f"{sub_dir_path}/model.py", unittest)
-
 
 
 def GetSha256sum(content):
@@ -88,10 +94,14 @@ def IsBackwardProgram(ir_program):
 
 
 def GetOutputUnittests(original_programs_file, example_inputs_file):
-    example_inputs_meta_getter = MakeExampleInputsMetaGetter(example_inputs_file)
+    example_inputs_meta_getter = MakeExampleInputsMetaGetter(
+        GetClasses(example_inputs_file)
+    )
 
     def MakeUnittestGenerator(ir_program):
-        return ModuleOpUnittestGenerator(ir_program, example_inputs_meta_getter)
+        return ModuleOpUnittestForGraphnetGenerator(
+            ir_program, example_inputs_meta_getter
+        )
 
     def CountNonBuiltinOps(ir_program):
         non_bulitin_ops = 0
@@ -101,14 +111,16 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
                 continue
             if not op.name.startswith("builtin."):
                 non_bulitin_ops += 1
-            elif op.name == 'builtin.shadow_output':
+            elif op.name == "builtin.shadow_output":
                 out_ops += 1
         return non_bulitin_ops, out_ops
 
     ir_programs_dict = dict()
     for cls in list(GetProgramClasses(original_programs_file)):
         ir_program = cls()
-        if not IsBackwardProgram(ir_program) and AllInputOutputTypesSupported(ir_program):
+        if not IsBackwardProgram(ir_program) and AllInputOutputTypesSupported(
+            ir_program
+        ):
             ops, outs = CountNonBuiltinOps(ir_program)
             # remove the ir_program which stores intermediate variables
             if ops in ir_programs_dict.keys() and outs < ir_programs_dict[ops][0]:
@@ -117,13 +129,12 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
                 ir_programs_dict[ops] = [outs, ir_program]
             else:
                 pass
+
     # remove the small ir_program
     ir_programs = [v[1] for k, v in ir_programs_dict.items() if k > 6]
     # raise ValueError("The longest ir program is not forward program.")
     yield from (
         (GetSha256sum(",".join(op_names))[0:32], unittest)
-        # for cls in GetProgramClasses(original_programs_file)
-        # for cls in [list(GetProgramClasses(original_programs_file))[0]]
         for ir_program in ir_programs
         if not IsBackwardProgram(ir_program)
         if AllInputOutputTypesSupported(ir_program)
@@ -150,15 +161,6 @@ def AllInputOutputTypesSupported(ir_program):
         for op in primitive_op_extractor.Extract(ir_program)
         for in_out_type in op.input_types + op.output_types
     )
-
-
-def MakeExampleInputsMetaGetter(example_inputs_file):
-    classes = [
-        cls
-        for name, cls in GetClasses(example_inputs_file)
-        if name.startswith("PirProgram_example_input_tensor_meta_")
-    ]
-    return ExampleInputsMetaGetter(records=classes)
 
 
 if __name__ == "__main__":
