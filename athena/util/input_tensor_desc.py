@@ -9,11 +9,15 @@ InputTensorDesc = namedtuple(
         "data",
         "min",
         "max",
+        "mean",
+        "std",
     ],
 )
 
 
-def MakeInputTensorDesc(shape, dtype, data, max_value=None, min_value=None):
+def MakeInputTensorDesc(
+    shape, dtype, data, max_value=None, min_value=None, mean=None, std=None
+):
     return InputTensorDesc(
         shape=shape,
         dtype=dtype,
@@ -21,6 +25,8 @@ def MakeInputTensorDesc(shape, dtype, data, max_value=None, min_value=None):
         data=data,
         min=getattr(InitMinGetter, dtype)() if min_value is None else min_value,
         max=getattr(InitMaxGetter, dtype)() if max_value is None else max_value,
+        mean=mean,
+        std=std,
     )
 
 
