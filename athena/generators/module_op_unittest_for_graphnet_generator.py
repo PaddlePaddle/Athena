@@ -56,12 +56,18 @@ class ModuleOpUnittestForGraphnetGenerator:
 
         def GetInstanceData(tensor):
             if tensor.arg_name_as_input is None:
-                return None, None, None
+                return None, None, None, None, None
             tensor_meta = self.example_inputs_meta_getter.Get(
                 program_id=self.program_id,
                 input_tensor=tensor,
             )
+            print("program_id")
+            print(self.program_id)
+            print(tensor_meta)
             data, max_value, min_value = tensor_meta.data, None, None
+            mean = getattr(tensor_meta, "mean", None)
+            std = getattr(tensor_meta, "std", None)
+
             if data is not None and isinstance(data, list) and len(data) > 0:
                 array = np.array(data)
                 max_value = np.max(array)
@@ -69,16 +75,22 @@ class ModuleOpUnittestForGraphnetGenerator:
                 if len(data) > 64:
                     # Don't save all the values for large array.
                     data = None
-            return data, max_value, min_value
+            else:
+                max_value = getattr(tensor_meta, "max", None)
+                min_value = getattr(tensor_meta, "min", None)
+
+            return data, max_value, min_value, mean, std
 
         def GetInputTensorDesc(input_tensor):
-            data, max_value, min_value = GetInstanceData(input_tensor)
+            data, max_value, min_value, mean, std = GetInstanceData(input_tensor)
             return MakeInputTensorDesc(
                 shape=GetInstanceShape(input_tensor),
                 dtype=input_tensor.dtype,
                 data=data,
                 max_value=max_value,
                 min_value=min_value,
+                mean=mean,
+                std=std,
             )
 
         def MakeBlockDescriptor(block):
