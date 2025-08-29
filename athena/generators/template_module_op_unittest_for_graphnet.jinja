@@ -5,6 +5,8 @@
 {%- set data = block.input_tensor_descs[input_idx].data -%}
 {%- set min = block.input_tensor_descs[input_idx].min -%}
 {%- set max = block.input_tensor_descs[input_idx].max -%}
+{%- set mean = block.input_tensor_descs[input_idx].mean -%}
+{%- set std = block.input_tensor_descs[input_idx].std -%}
 {%- if data != None -%}
   {%- if data == [] and shape == [] -%}
     shape = {{shape}}
@@ -32,6 +34,8 @@
     dtype = '{{dtype}}'
     low = {{min}}
     high = {{max}}
+    mean = {{mean}}
+    std = {{std}}
     data = None
 {%- endif -%}
 {%- endmacro %}
