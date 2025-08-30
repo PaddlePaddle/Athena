@@ -61,9 +61,6 @@ class ModuleOpUnittestForGraphnetGenerator:
                 program_id=self.program_id,
                 input_tensor=tensor,
             )
-            print("program_id")
-            print(self.program_id)
-            print(tensor_meta)
             data, max_value, min_value = tensor_meta.data, None, None
             mean = getattr(tensor_meta, "mean", None)
             std = getattr(tensor_meta, "std", None)
