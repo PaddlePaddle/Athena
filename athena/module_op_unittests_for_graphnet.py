@@ -19,26 +19,23 @@ import json
 
 FLAGS = flags.FLAGS
 
+flags.DEFINE_string("model_name", "", "model name.")
 flags.DEFINE_string("ir_programs", "", "ir programs file.")
 flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
-flags.DEFINE_boolean("enable_early_return", False, "enable early return.")
-flags.DEFINE_boolean("enable_local_tensor", True, "enable local tensor name.")
 
 
 def main(argv):
-    os.environ["ATHENA_ENABLE_LOCAL_TENSOR"] = str(FLAGS.enable_local_tensor)
-    os.environ["ATHENA_ENABLE_EARLY_RETURN"] = str(FLAGS.enable_early_return)
     original_programs_file = FLAGS.ir_programs
     example_inputs_file = FLAGS.example_inputs
     seg_counter = defaultdict(lambda: itertools.count())
-    for module_id, (uid, unittest) in enumerate(
+    for module_id, (num_unittests, uid, unittest) in enumerate(
         GetOutputUnittests(original_programs_file, example_inputs_file)
     ):
-        if module_id == 0:
+        if num_unittests == 1:
             sub_dir_path = f"{FLAGS.output_dir}"
         else:
-            sub_dir_path = f"{FLAGS.output_dir}_{module_id}"
+            sub_dir_path = os.path.join(f"{FLAGS.output_dir}", f"subgraph_{module_id}")
         inputs_meta, weighs_meta, model_arch = unittest.split(
             "# --- seperate line ----\n"
         )
@@ -46,7 +43,7 @@ def main(argv):
             if os.path.isfile(file):
                 os.remove(file)
         if not os.path.exists(sub_dir_path):
-            os.mkdir(sub_dir_path)
+            os.makedirs(sub_dir_path)
         WriteToFile(f"{sub_dir_path}/model.py", model_arch)
         WriteToFile(
             f"{sub_dir_path}/weight_meta.py", weighs_meta.rstrip("\n\n\n") + "\n"
@@ -54,14 +51,15 @@ def main(argv):
         WriteToFile(f"{sub_dir_path}/input_meta.py", inputs_meta.strip("\n\n\n") + "\n")
         metadata = {
             "framework": "paddle",
+            "model_name": f"{FLAGS.model_name}",
             "num_devices_required": 1,
             "num_nodes_required": 1,
         }
         with open(os.path.join(sub_dir_path, "graph_net.json"), "w") as f:
             json.dump(metadata, f, indent=4)
-        print("flag", f"{sub_dir_path}/model.py")
+        print(f"Genrating {sub_dir_path}/model.py")
         unique_name = f"{uid}_{next(seg_counter[uid])}"
-        PrintToTerminal(unique_name, f"{sub_dir_path}/model.py", unittest)
+        # PrintToTerminal(unique_name, f"{sub_dir_path}/model.py", unittest)
 
 
 def GetSha256sum(content):
@@ -131,9 +129,17 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
                 pass
 
     # remove the small ir_program
-    ir_programs = [v[1] for k, v in ir_programs_dict.items() if k > 6]
+    ir_programs = []
+    for k, v in ir_programs_dict.items():
+        if k > 6:
+            print(f"Save the ir_program with {k} non-builtin ops")
+            ir_programs.append(v[1])
+        else:
+            print(f"Abandon the ir_program with {k} non-builtin ops")
+
+    num_ir_programs = len(ir_programs)
     yield from (
-        (GetSha256sum(",".join(op_names))[0:32], unittest)
+        (num_ir_programs, GetSha256sum(",".join(op_names))[0:32], unittest)
         for ir_program in ir_programs
         if not IsBackwardProgram(ir_program)
         if AllInputOutputTypesSupported(ir_program)
