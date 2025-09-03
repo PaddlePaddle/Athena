@@ -34,8 +34,11 @@ InputSpecDesc = namedtuple(
 
 
 class ModuleOpUnittestForGraphnetGenerator:
-    def __init__(self, ir_program, example_inputs_meta_getter):
+    def __init__(
+        self, ir_program, example_inputs_meta_getter, max_depth_output_only=False
+    ):
         self.example_inputs_meta_getter = example_inputs_meta_getter
+        self.max_depth_output_only = max_depth_output_only
         self.name = type(ir_program).__name__
         self.program_id = int(self.name[len("PirProgram_") :])
         self.blocks_generator = BlocksGenerator(ir_program)
@@ -95,7 +98,7 @@ class ModuleOpUnittestForGraphnetGenerator:
                 input_local_tensors,
                 stmts,
                 output_local_tensors,
-            ) = self.unittest_stmts_gen.Generate(block)
+            ) = self.unittest_stmts_gen.Generate(block, self.max_depth_output_only)
             input_local_tensors = [
                 ConvertToPaddleTensor(t) for t in input_local_tensors
             ]
