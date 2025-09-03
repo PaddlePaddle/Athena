@@ -29,10 +29,18 @@
 {%- elif big_dtype == "float64" -%}
     shape = {{shape}}
     dtype = '{{dtype}}'
-    min_val = {{min}}
-    max_val = {{max}}
-    mean = {{mean}}
-    std = {{std}}
+    {%- if min %}
+    min_val = float('{{min}}')
+    {%- endif %}
+    {%- if max %}
+    max_val = float('{{max}}')
+    {%- endif %}
+    {%- if mean %}
+    mean = float('{{mean}}')
+    {%- endif %}
+    {%- if std %}
+    std = float('{{std}}')
+    {%- endif %}
     data = None
     {{ "" }}
 {%- endif -%}
