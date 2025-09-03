@@ -63,9 +63,9 @@ class PaddleFuncBodyGenerator:
         self.block_op_calls = []
         self.body_op_id2op_index = {}
 
-    def Generate(self, free_vars, args):
+    def Generate(self, free_vars, args, max_depth_output_only):
         input_tensors, output_tensors = self.input_output_tensors_extractor.Extract(
-            free_vars, args
+            free_vars, args, max_depth_output_only
         )
         input_local_tensors = [
             self.tensor_converter.ConvertToLocalTensor(tensor)

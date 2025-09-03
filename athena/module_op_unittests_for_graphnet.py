@@ -23,6 +23,11 @@ flags.DEFINE_string("model_name", "", "model name.")
 flags.DEFINE_string("ir_programs", "", "ir programs file.")
 flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
+flags.DEFINE_boolean(
+    "max_depth_output_only",
+    False,
+    "Only keep output tensors with maximum depth (longest chain).",
+)
 
 
 def main(argv):
@@ -98,7 +103,9 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
 
     def MakeUnittestGenerator(ir_program):
         return ModuleOpUnittestForGraphnetGenerator(
-            ir_program, example_inputs_meta_getter
+            ir_program,
+            example_inputs_meta_getter,
+            max_depth_output_only=FLAGS.max_depth_output_only,
         )
 
     def CountNonBuiltinOps(ir_program):
