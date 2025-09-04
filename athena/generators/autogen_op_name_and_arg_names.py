@@ -740,6 +740,7 @@ phi_ops_yaml_ops = [
         ("Tensor", "x"),
         ("Scalar(int64_t)", "axis"),
         ("bool", "keepdims"),
+        ("bool", "flatten"),
         ("DataType", "dtype"),
     ),
     (
