@@ -1,0 +1,6 @@
+export FLAGS_logging_trunc_pir_py_code=1
+export FLAGS_logging_pir_py_code_int_tensor_element_limit=64
+export FLAGS_logging_pir_py_code_dir=/daiwenhao/Athena/train2infer_test/multi_branch
+export ENABLE_CINN_IN_DY2ST=0
+
+python multi_branch.py
