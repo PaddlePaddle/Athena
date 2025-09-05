@@ -6,13 +6,23 @@ class InputOutputTensorsExtractor:
         self.block_func = block_func
         self.input_tensors = []
         self.output_tensors = []
-        self.tensor_name2depth = defaultdict(int)
         self.tensor_name2ancestors = defaultdict(set)
+        self.consumed_tensors = set()
+        self.multi_output_ops = {}
 
     def Extract(self, free_vars, args, max_depth_output_only=False):
         self.input_tensors += list(free_vars)
         self.input_tensors += list(args)
         self.block_func(self, *free_vars)(*args)
+
+        tensors_to_remove = set()
+        for op_id, output_names in self.multi_output_ops.items():
+            if any(name in self.consumed_tensors for name in output_names):
+                tensors_to_remove.update(output_names)
+
+        self.output_tensors = [
+            t for t in self.output_tensors if t.name not in tensors_to_remove
+        ]
 
         if max_depth_output_only:
             ancestors = set(
@@ -39,7 +49,9 @@ class InputOutputTensorsExtractor:
         self.input_tensors += list(op.GetResults())
 
     def builtin_shadow_output(self, op, *inputs):
-        self.output_tensors += [t for t in inputs if t is not None]
+        for tensor in inputs:
+            if tensor is not None:
+                self.output_tensors.append(tensor)
 
     def pd_op_fetch(self, op, *inputs):
         self.output_tensors += [t for t in inputs if t is not None]
@@ -54,6 +66,18 @@ class InputOutputTensorsExtractor:
 
         ret = op.GetResults()
         valid_input_tensors = [t for t in input_tensors if t is not None]
+
+        for tensor in valid_input_tensors:
+            self.consumed_tensors.add(tensor.name)
+
+        if op.name in [
+            "pd_op.batch_norm_",
+            "pd_op.layer_norm",
+            "pd_op.split",
+            "pd_op.top_k",
+        ]:
+            output_names = [t.name for t in ret]
+            self.multi_output_ops[op.op_id] = output_names
 
         if valid_input_tensors:
             input_ancestors = set(
