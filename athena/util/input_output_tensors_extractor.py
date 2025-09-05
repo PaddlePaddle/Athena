@@ -9,22 +9,28 @@ class InputOutputTensorsExtractor:
         self.tensor_name2ancestors = defaultdict(set)
         self.consumed_tensors = set()
         self.multi_output_ops = {}
+        self.confusing_redundant_ops = {}
 
     def Extract(self, free_vars, args, max_depth_output_only=False):
         self.input_tensors += list(free_vars)
         self.input_tensors += list(args)
         self.block_func(self, *free_vars)(*args)
 
-        tensors_to_remove = set()
-        for op_id, output_names in self.multi_output_ops.items():
-            if any(name in self.consumed_tensors for name in output_names):
+        if max_depth_output_only:
+            tensors_to_remove = set()
+            for op_id, output_names in self.multi_output_ops.items():
+                if any(name in self.consumed_tensors for name in output_names):
+                    print(f"-- remove: {op_id}, {output_names}")
+                    tensors_to_remove.update(output_names)
+
+            for op_id, output_names in self.confusing_redundant_ops.items():
+                print(f"-- remove: {op_id}, {output_names}")
                 tensors_to_remove.update(output_names)
 
-        self.output_tensors = [
-            t for t in self.output_tensors if t.name not in tensors_to_remove
-        ]
+            self.output_tensors = [
+                t for t in self.output_tensors if t.name not in tensors_to_remove
+            ]
 
-        if max_depth_output_only:
             ancestors = set(
                 ancestor
                 for tensor in self.output_tensors
@@ -73,11 +79,16 @@ class InputOutputTensorsExtractor:
         if op.name in [
             "pd_op.batch_norm_",
             "pd_op.layer_norm",
-            "pd_op.split",
-            "pd_op.top_k",
+            "pd_op.dropout",
+            # "pd_op.split",
+            # "pd_op.top_k",
         ]:
             output_names = [t.name for t in ret]
-            self.multi_output_ops[op.op_id] = output_names
+            self.multi_output_ops[op.op_id] = output_names[1:]
+
+        if op.name in ["pd_op.assign"]:
+            output_names = [t.name for t in ret]
+            self.confusing_redundant_ops[op.op_id] = output_names
 
         if valid_input_tensors:
             input_ancestors = set(
