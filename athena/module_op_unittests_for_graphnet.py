@@ -16,6 +16,8 @@ import athena.ir.ir_type as ir_type
 import itertools
 from collections import defaultdict
 import json
+from dataclasses import dataclass
+from typing import Dict
 
 FLAGS = flags.FLAGS
 
@@ -30,41 +32,69 @@ flags.DEFINE_boolean(
 )
 
 
+@dataclass
+class GraphnetSample:
+    unique_name: str
+    metadata: Dict[str, str]
+    input_meta: str
+    weight_meta: str
+    model: str
+
+
+def generate_samples(model_name, ir_programs, example_inputs, max_depth_output_only):
+    metadata = {
+        "framework": "paddle",
+        "model_name": model_name,
+        "num_devices_required": 1,
+        "num_nodes_required": 1,
+    }
+
+    graphnet_sample_results = []
+    seg_counter = defaultdict(lambda: itertools.count())
+    for module_id, (num_unittests, uid, unittest) in enumerate(
+        GetOutputUnittests(ir_programs, example_inputs)
+    ):
+        unique_name = f"{uid}_{next(seg_counter[uid])}"
+        input_meta, weight_meta, model = unittest.split("# --- seperate line ----\n")
+        sample = GraphnetSample(
+            unique_name=unique_name,
+            metadata=metadata,
+            input_meta=input_meta.strip("\n\n\n") + "\n",
+            weight_meta=weight_meta.rstrip("\n\n\n") + "\n",
+            model=model,
+        )
+        graphnet_sample_results.append(sample)
+        print(f"Genrating {model_name}/subgraph_{module_id}:")
+        # PrintToTerminal(unique_name, unittest)
+    return graphnet_sample_results
+
+
 def main(argv):
     original_programs_file = FLAGS.ir_programs
     example_inputs_file = FLAGS.example_inputs
-    seg_counter = defaultdict(lambda: itertools.count())
-    for module_id, (num_unittests, uid, unittest) in enumerate(
-        GetOutputUnittests(original_programs_file, example_inputs_file)
-    ):
-        if num_unittests == 1:
+    graphnet_sample_results = generate_samples(
+        FLAGS.model_name,
+        original_programs_file,
+        example_inputs_file,
+        FLAGS.max_depth_output_only,
+    )
+    num_subgraphs = len(graphnet_sample_results)
+    for i, sample in enumerate(graphnet_sample_results):
+        if num_subgraphs == 1:
             sub_dir_path = f"{FLAGS.output_dir}"
         else:
-            sub_dir_path = os.path.join(f"{FLAGS.output_dir}", f"subgraph_{module_id}")
-        inputs_meta, weighs_meta, model_arch = unittest.split(
-            "# --- seperate line ----\n"
-        )
+            sub_dir_path = os.path.join(f"{FLAGS.output_dir}", f"subgraph_{i}")
+
         for file in glob.glob(f"{sub_dir_path}/*"):
             if os.path.isfile(file):
                 os.remove(file)
         if not os.path.exists(sub_dir_path):
             os.makedirs(sub_dir_path)
-        WriteToFile(f"{sub_dir_path}/model.py", model_arch)
-        WriteToFile(
-            f"{sub_dir_path}/weight_meta.py", weighs_meta.rstrip("\n\n\n") + "\n"
-        )
-        WriteToFile(f"{sub_dir_path}/input_meta.py", inputs_meta.strip("\n\n\n") + "\n")
-        metadata = {
-            "framework": "paddle",
-            "model_name": f"{FLAGS.model_name}",
-            "num_devices_required": 1,
-            "num_nodes_required": 1,
-        }
+        WriteToFile(f"{sub_dir_path}/model.py", sample.model)
+        WriteToFile(f"{sub_dir_path}/weight_meta.py", sample.weight_meta)
+        WriteToFile(f"{sub_dir_path}/input_meta.py", sample.input_meta)
         with open(os.path.join(sub_dir_path, "graph_net.json"), "w") as f:
-            json.dump(metadata, f, indent=4)
-        print(f"Genrating {sub_dir_path}/model.py")
-        unique_name = f"{uid}_{next(seg_counter[uid])}"
-        # PrintToTerminal(unique_name, f"{sub_dir_path}/model.py", unittest)
+            json.dump(sample.metadata, f, indent=4)
 
 
 def GetSha256sum(content):
@@ -73,10 +103,10 @@ def GetSha256sum(content):
     return m.hexdigest()
 
 
-def PrintToTerminal(name, filepath, unittest):
-    print("# file-splitter-begin-fusion-op-name: ", name, filepath)
+def PrintToTerminal(name, unittest):
+    print("# file-splitter-begin-fusion-op-name: ", name)
     print(unittest)
-    print("# file-splitter--end--fusion-op-name: ", name, filepath)
+    print("# file-splitter--end--fusion-op-name: ", name)
 
 
 def WriteToFile(filepath, unittest):
