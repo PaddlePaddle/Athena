@@ -26,9 +26,9 @@ flags.DEFINE_string("ir_programs", "", "ir programs file.")
 flags.DEFINE_string("example_inputs", "", "example input tensor meta file.")
 flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
 flags.DEFINE_boolean(
-    "max_depth_output_only",
+    "eval_mode",
     False,
-    "Only keep output tensors with maximum depth (longest chain).",
+    "Generate unittest for eval, which only keep output tensors with maximum depth (longest chain).",
 )
 
 
@@ -41,7 +41,7 @@ class GraphnetSample:
     model: str
 
 
-def generate_samples(model_name, ir_programs, example_inputs, max_depth_output_only):
+def generate_samples(model_name, ir_programs, example_inputs, eval_mode):
     metadata = {
         "framework": "paddle",
         "model_name": model_name,
@@ -70,13 +70,11 @@ def generate_samples(model_name, ir_programs, example_inputs, max_depth_output_o
 
 
 def main(argv):
-    original_programs_file = FLAGS.ir_programs
-    example_inputs_file = FLAGS.example_inputs
     graphnet_sample_results = generate_samples(
-        FLAGS.model_name,
-        original_programs_file,
-        example_inputs_file,
-        FLAGS.max_depth_output_only,
+        model_name=FLAGS.model_name,
+        ir_programs=FLAGS.ir_programs,
+        example_inputs=FLAGS.example_inputs,
+        eval_mode=FLAGS.eval_mode,
     )
     num_subgraphs = len(graphnet_sample_results)
     for i, sample in enumerate(graphnet_sample_results):
@@ -110,6 +108,7 @@ def PrintToTerminal(name, unittest):
 
 
 def WriteToFile(filepath, unittest):
+    print(f"Write to {filepath}")
     with open(filepath, "w") as f:
         f.write(unittest)
 
@@ -135,7 +134,7 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
         return ModuleOpUnittestForGraphnetGenerator(
             ir_program,
             example_inputs_meta_getter,
-            max_depth_output_only=FLAGS.max_depth_output_only,
+            eval_mode=FLAGS.eval_mode,
         )
 
     def CountNonBuiltinOps(ir_program):

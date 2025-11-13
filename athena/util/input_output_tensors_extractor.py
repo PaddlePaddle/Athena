@@ -8,27 +8,20 @@ class InputOutputTensorsExtractor:
         self.output_tensors = []
         self.tensor_name2ancestors = defaultdict(set)
         self.consumed_tensors = set()
-        self.multi_output_ops = {}
-        self.confusing_redundant_ops = {}
+        self.invalid_outputs_for_eval = {}
 
-    def Extract(self, free_vars, args, max_depth_output_only=False):
+    def Extract(self, free_vars, args, eval_mode=False):
         self.input_tensors += list(free_vars)
         self.input_tensors += list(args)
         self.block_func(self, *free_vars)(*args)
 
-        if max_depth_output_only:
-            tensors_to_remove = set()
-            for op_id, output_names in self.multi_output_ops.items():
-                if any(name in self.consumed_tensors for name in output_names):
-                    print(f"-- remove: {op_id}, {output_names}")
-                    tensors_to_remove.update(output_names)
-
-            for op_id, output_names in self.confusing_redundant_ops.items():
-                print(f"-- remove: {op_id}, {output_names}")
-                tensors_to_remove.update(output_names)
+        if eval_mode:
+            tensor_names_to_remove = set()
+            for op_id, output_names in self.invalid_outputs_for_eval.items():
+                tensor_names_to_remove.update(output_names)
 
             self.output_tensors = [
-                t for t in self.output_tensors if t.name not in tensors_to_remove
+                t for t in self.output_tensors if t.name not in tensor_names_to_remove
             ]
 
             ancestors = set(
@@ -40,6 +33,9 @@ class InputOutputTensorsExtractor:
                 tensor for tensor in self.output_tensors if tensor.name not in ancestors
             ]
 
+        print(
+            f"Totally {len(self.input_tensors)} input tensors, {len(self.output_tensors)} output tensors."
+        )
         return self.input_tensors, self.output_tensors
 
     def pd_op_data(self, op):
@@ -55,15 +51,44 @@ class InputOutputTensorsExtractor:
         self.input_tensors += list(op.GetResults())
 
     def builtin_shadow_output(self, op, *inputs):
-        for tensor in inputs:
-            if tensor is not None:
-                self.output_tensors.append(tensor)
+        self.output_tensors += [t for t in inputs if t is not None]
 
     def pd_op_fetch(self, op, *inputs):
         self.output_tensors += [t for t in inputs if t is not None]
 
     def cf_yield(self, op, *inputs):
         self.output_tensors += [t for t in inputs if t is not None]
+
+    def collect_invalid_outputs(self, op, *input_tensors, **kwargs):
+        ret = op.GetResults()
+        output_names = [t.name for t in ret]
+
+        # Some operators have multiple outputs, but part of the outputs are training-only (e.g., batch mean and variance) which should not be returned.
+        if op.name in [
+            "pd_op.batch_norm_",
+            "pd_op.layer_norm",
+            "pd_op.dropout",
+            "pd_op.einsum",
+            "pd_op.group_norm",
+        ]:
+            self.invalid_outputs_for_eval[op.op_id] = output_names[1:]
+
+        if op.name in ["pd_op.full_int_array", "pd_op.assign"]:
+            self.invalid_outputs_for_eval[op.op_id] = output_names
+
+        if op.name in ["builtin.split"]:
+            # The input tensors are marked invalid.
+            all_invalid_output_names = {
+                name
+                for invalid_output_names in self.invalid_outputs_for_eval.values()
+                for name in invalid_output_names
+            }
+            all_input_tensors_invalid = all(
+                input_tensor.name in all_invalid_output_names
+                for input_tensor in input_tensors
+            )
+            if all_input_tensors_invalid:
+                self.invalid_outputs_for_eval[op.op_id] = output_names
 
     def __call__(self, op, *input_tensors, **kwargs):
         method_name = op.GetPyVarName()
@@ -73,22 +98,10 @@ class InputOutputTensorsExtractor:
         ret = op.GetResults()
         valid_input_tensors = [t for t in input_tensors if t is not None]
 
+        self.collect_invalid_outputs(op, *input_tensors)
+
         for tensor in valid_input_tensors:
             self.consumed_tensors.add(tensor.name)
-
-        if op.name in [
-            "pd_op.batch_norm_",
-            "pd_op.layer_norm",
-            "pd_op.dropout",
-            # "pd_op.split",
-            # "pd_op.top_k",
-        ]:
-            output_names = [t.name for t in ret]
-            self.multi_output_ops[op.op_id] = output_names[1:]
-
-        if op.name in ["pd_op.assign"]:
-            output_names = [t.name for t in ret]
-            self.confusing_redundant_ops[op.op_id] = output_names
 
         if valid_input_tensors:
             input_ancestors = set(

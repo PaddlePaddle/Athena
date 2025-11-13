@@ -63,9 +63,9 @@ class PaddleFuncBodyGenerator:
         self.block_op_calls = []
         self.body_op_id2op_index = {}
 
-    def Generate(self, free_vars, args, max_depth_output_only):
+    def Generate(self, free_vars, args, eval_mode):
         input_tensors, output_tensors = self.input_output_tensors_extractor.Extract(
-            free_vars, args, max_depth_output_only
+            free_vars, args, eval_mode
         )
         input_local_tensors = [
             self.tensor_converter.ConvertToLocalTensor(tensor)
@@ -213,7 +213,6 @@ class PaddleFuncBodyGenerator:
         return IndentedPyCode(pycode=pycode, num_tabs=2)
 
     def CollectPyCodeStmt(self, GetStmtPyCode, op, *input_tensors, **kwargs):
-        self.RemoveInvalidOutputTensorsForCinn(op, *input_tensors)
         outputs_type_strs = [t.GetShortStr() for t in op.output_types]
         inputs_type_strs = [t.GetShortStr() for t in op.input_types]
         outputs_shape_symbol_strs = [
@@ -274,43 +273,6 @@ class PaddleFuncBodyGenerator:
             )
         )
         return op.GetResults()
-
-    def RemoveInvalidOutputTensorsForCinn(self, op, *input_tensors):
-        invalid_tensor_names = []
-        if op.name == "pd_op.batch_norm_":
-            assert len(op.GetResults()) == 6, "batch_norm has 6 outputs."
-            is_test = op.attrs["is_test"].value
-            trainable_statistics = op.attrs["trainable_statistics"].value
-            use_global_stats = op.attrs["use_global_stats"].value
-            use_run_stats = (is_test and not trainable_statistics) or use_global_stats
-            # the 3-th and 4-th output (saved_mean, saved_variance) are avaiable when use_run_stats is False.
-            if use_run_stats:
-                invalid_tensor_names.append(
-                    self.tensor_converter.ConvertToLocalTensor(op.GetResults()[3]).name
-                )
-                invalid_tensor_names.append(
-                    self.tensor_converter.ConvertToLocalTensor(op.GetResults()[4]).name
-                )
-            # the 5-th output is reserve_space which is only used in phi kernel.
-            invalid_tensor_names.append(
-                self.tensor_converter.ConvertToLocalTensor(op.GetResults()[5]).name
-            )
-        elif op.name == "pd_op.full_int_array":
-            # output of pd_op.full_int_array is a python integer list.
-            invalid_tensor_names.append(
-                self.tensor_converter.ConvertToLocalTensor(op.GetResults()[0]).name
-            )
-        elif op.name == "pd_op.assign":
-            # for the case: pd_op.full_int_array -> pd_op.assign
-            # then the output of pd_op.assign is a python integer list.
-            out = self.tensor_converter.ConvertToLocalTensor(op.GetResults()[0])
-            for input_tensor in input_tensors:
-                if input_tensor.defining_op_name == "pd_op.full_int_array":
-                    invalid_tensor_names.append(out.name)
-
-        for tensor in self.output_local_tensors:
-            if tensor.name in invalid_tensor_names:
-                self.output_local_tensors.remove(tensor)
 
     def GetStmtPyCode(
         self, local_output_tensor_names, op, *input_local_tensors, **kwargs

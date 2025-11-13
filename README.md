@@ -51,5 +51,5 @@ Details see `tests/test_primitive_op_unittests.sh`.
 ### Module op unittests for [GraphNet](https://github.com/PaddlePaddle/GraphNet)
 Module op unittests for [GraphNet](https://github.com/PaddlePaddle/GraphNet) are generated from pir programs file and program example input tensor meta file.
 ```bash
-python3 -m athena.module_op_unittests_for_graphnet --ir_programs=./example_exec_programs.py --example_inputs=./example_programs_example_input_tensor_meta.py  --output_dir=/tmp
+python3 -m athena.module_op_unittests_for_graphnet --model_name="test" --ir_programs=./example_exec_programs.py --example_inputs=./example_programs_example_input_tensor_meta.py  --output_dir=/tmp --eval_mode=True
 ```
