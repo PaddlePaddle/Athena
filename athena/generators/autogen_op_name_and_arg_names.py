@@ -1960,6 +1960,12 @@ phi_ops_yaml_ops = [
         ("float", "scale"),
     ),
     (
+        "masked_fill",
+        ("Tensor", "x"),
+        ("Tensor", "mask"),
+        ("Tensor", "value"),
+    ),
+    (
         "masked_multihead_attention_",
         ("Tensor", "x"),
         ("Tensor", "cache_kv"),
@@ -2378,12 +2384,19 @@ phi_ops_yaml_ops = [
     ("relu", ("Tensor", "x")),
     ("relu6", ("Tensor", "x")),
     ("renorm", ("Tensor", "x"), ("float", "p"), ("int", "axis"), ("float", "max_norm")),
-    ("repeat_interleave", ("Tensor", "x"), ("int", "repeats"), ("int", "axis")),
+    (
+        "repeat_interleave",
+        ("Tensor", "x"),
+        ("int", "repeats"),
+        ("int", "axis"),
+        ("int", "output_size"),
+    ),
     (
         "repeat_interleave_with_tensor_index",
         ("Tensor", "x"),
         ("Tensor", "repeats"),
         ("int", "axis"),
+        ("int", "output_size"),
     ),
     ("reverse", ("Tensor", "x"), ("IntArray", "axis")),
     (

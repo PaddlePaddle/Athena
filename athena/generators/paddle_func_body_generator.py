@@ -1,17 +1,15 @@
 from athena.ir_converters.paddle_op_converter import ConvertToPaddleOp
-from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
 from athena.generators.paddle_op_call_generator import PaddleOpCallGenerator
 from athena.generators.global_tensor_converter import GlobalTensorConverter
 from athena.util.name_generator import NameGenerator
 from dataclasses import dataclass
-from typing import List, Union, Callable
+from typing import List, Callable
 from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.tensor_topo import (
     GetOpId2TensorNamesUsedByMeAndDownstream,
     GetOpId2OpPipeInOutNamesSignature,
     OpPipeInOutNamesSignature,
 )
-from athena.generators.block_name_generator import BlockNameGenerator
 from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
 from athena.util.block_op_calls_extractor import BlockOpCallsExtractor
 import athena.util.lambda_util as fn
@@ -65,9 +63,9 @@ class PaddleFuncBodyGenerator:
         self.block_op_calls = []
         self.body_op_id2op_index = {}
 
-    def Generate(self, free_vars, args):
+    def Generate(self, free_vars, args, eval_mode):
         input_tensors, output_tensors = self.input_output_tensors_extractor.Extract(
-            free_vars, args
+            free_vars, args, eval_mode
         )
         input_local_tensors = [
             self.tensor_converter.ConvertToLocalTensor(tensor)
@@ -143,12 +141,12 @@ class PaddleFuncBodyGenerator:
         arg_str = fn.join_map([t.name for t in args])
         cond_name = cond.name
         return [
-            self.Indent0(lambda f: f"import os"),
+            self.Indent0(lambda f: "import os"),
             self.Indent0(
-                lambda f: f"ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
+                lambda f: "ATHENA_WHILE_LOOP_LIMIT = os.getenv('ATHENA_WHILE_LOOP_LIMIT')"
             ),
             self.Indent0(
-                lambda f: f"kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
+                lambda f: "kWhileLoopLimit = (128 if ATHENA_WHILE_LOOP_LIMIT is None else int(ATHENA_WHILE_LOOP_LIMIT))"
             ),
             self.Indent0(lambda f: f"while_loop_counter_{op.op_id} = 0"),
             self.Indent0(lambda f: f"while {f(cond_name)}:"),
@@ -159,8 +157,8 @@ class PaddleFuncBodyGenerator:
             self.Indent1(
                 lambda f: f"if while_loop_counter_{op.op_id} > kWhileLoopLimit:"
             ),
-            self.Indent2(lambda f: f"break"),
-            self.Indent1(lambda f: f""),
+            self.Indent2(lambda f: "break"),
+            self.Indent1(lambda f: ""),
             self.Indent0(lambda f: f"{output_unpack_str(f)}, = {arg_str(f)},"),
         ]
 
@@ -196,7 +194,7 @@ class PaddleFuncBodyGenerator:
             self.Indent1(
                 lambda f: f"{ret(f)}, = self.{true_block_name}({true_branch_input_names(f)})"
             ),
-            self.Indent0(lambda f: f"else:"),
+            self.Indent0(lambda f: "else:"),
             self.Indent1(
                 lambda f: f"{ret(f)}, = self.{false_block_name}({false_branch_input_names(f)})"
             ),

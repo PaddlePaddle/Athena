@@ -10,7 +10,6 @@ import athena.util.lambda_util as fn
 
 
 class GSOutputDimGenerator:
-
     def __init__(self, module_name, inputs, symbol_bindings):
         self.m = module_name
         self.symbol2py_code = {
@@ -106,7 +105,6 @@ class GSOutputDimGenerator:
 
 
 class CinnOpCallGenerator:
-
     def cinn_op_yield_store(self, op, x):
         return lambda f: f"{f(x.name)},"
 
@@ -155,7 +153,6 @@ class CinnOpCallGenerator:
 
 
 class PaddleOpCallGenerator(CinnOpCallGenerator):
-
     def __init__(self, module_name="paddle"):
         self.m = module_name
 
@@ -347,7 +344,7 @@ class PaddleOpCallGenerator(CinnOpCallGenerator):
     def pd_op_batch_norm_(self, op, *inputs):
         return self.GenerateCOpsCall(op, inputs, op_name="batch_norm")
 
-    def pd_op_rnn_(self, op, *inputs):
+    def pd_op_rnn(self, op, *inputs):
         outs = self.GenerateCOpsCall(op, inputs, op_name="rnn")
         return lambda f: f"{outs(f)} + (None,)"
 

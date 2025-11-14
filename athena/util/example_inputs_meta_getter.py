@@ -12,6 +12,10 @@ class InputMeta:
     name: str
     shape: t.List[int]
     data: t.Optional[t.List[int]]
+    max: t.Optional[float]
+    min: t.Optional[float]
+    mean: t.Optional[float]
+    std: t.Optional[float]
 
 
 class ExampleInputsMetaGetter:
@@ -74,5 +78,18 @@ class ExampleInputsMetaGetter:
                 name=record.input_name,
                 shape=record.shape,
                 data=record.data if hasattr(record, "data") else None,
+                max=record.max_val if hasattr(record, "max_val") else None,
+                min=record.min_val if hasattr(record, "min_val") else None,
+                mean=record.mean if hasattr(record, "mean") else None,
+                std=record.std if hasattr(record, "std") else None,
             )
         return input_meta_key2value
+
+
+def MakeExampleInputsMetaGetter(name_and_classes):
+    classes = [
+        cls
+        for name, cls in name_and_classes
+        if name.startswith("PirProgram_example_input_tensor_meta_")
+    ]
+    return ExampleInputsMetaGetter(records=classes)

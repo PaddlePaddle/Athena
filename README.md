@@ -28,7 +28,7 @@ examples see `tests/test-generate-module-op-unittests.sh`.
 
 Sequence statement unittests are generated from pir programs file and op example input tensor meta file.
 ```bash
-python3.9 -m athena.sequence_unittests --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
+python3 -m athena.sequence_unittests --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
 ```
 Details see `tests/test_sequence_unittests.sh`.
 
@@ -36,20 +36,20 @@ Details see `tests/test_sequence_unittests.sh`.
 
 Typical sequence statement unittests are generated from pir programs file and op example input tensor meta file.
 ```bash
-python3.9 -m athena.typical_sequence_unittests --length_slice="16:33" --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
+python3 -m athena.typical_sequence_unittests --length_slice="16:33" --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
 ```
 Details see `tests/test_typical_sequence_unittests.sh`.
 
-### Primitive op unittests 
+### Primitive op unittests
 Primitive op unittests are generated from pir programs file and op example input tensor meta file.
 ```bash
-python3.9 -m athena.primitive_op_unittests --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
+python3 -m athena.primitive_op_unittests --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
 ```
 Details see `tests/test_primitive_op_unittests.sh`.
 
 
-### Full graph unittests 
-Full graph unittests  are generated from pir programs file and op example input tensor meta file.
+### Module op unittests for [GraphNet](https://github.com/PaddlePaddle/GraphNet)
+Module op unittests for [GraphNet](https://github.com/PaddlePaddle/GraphNet) are generated from pir programs file and program example input tensor meta file.
 ```bash
-python3.9 -m athena.full_graph_unittests --ir_programs=./example_exec_programs.py --op_example_input_tensor_meta=./example_op_example_input_tensor_meta.py --output_dir=/tmp
+python3 -m athena.module_op_unittests_for_graphnet --model_name="test" --ir_programs=./example_exec_programs.py --example_inputs=./example_programs_example_input_tensor_meta.py  --output_dir=/tmp --eval_mode=True
 ```
