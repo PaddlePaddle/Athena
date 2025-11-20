@@ -1,33 +1,26 @@
 from dataclasses import dataclass
-from athena.ir_converters.paddle_op_converter import ConvertToPaddleOp
 from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
 from athena.ir_converters.paddle_type_converter import ConvertTypeToString
-from athena.generators.paddle_op_call_generator import PaddleOpCallGenerator
 from athena.generators.paddle_func_body_generator import PyCodeStmt
 import typing as t
-from athena.util.input_tensor_desc import InputTensorDesc, MakeInputTensorDesc
+from athena.util.input_tensor_desc import MakeInputTensorDesc
 import athena.ir.ir_type as ir_type
 import athena.ir.ir_tensor as ir_tensor
 import athena.ir.ir_symbol as ir_symbol
-from collections import namedtuple
 import os
 import jinja2
 
 import hashlib
 from athena.generators.paddle_c_ops_arg_names import op_name2args
-import typing as t
-import random
 from athena.util.ops_func_signature import (
     InputSpecDesc,
-    TensorId,
     NullTensorId,
     OperandTensorId,
     TensorListMemberId,
     OperandId,
     OpsFuncSignature,
 )
-from collections import OrderedDict, defaultdict
-import itertools
+from collections import OrderedDict
 
 
 @dataclass
@@ -39,7 +32,6 @@ class SequenceFuncDesc:
 
 
 class SequenceUnittestsGenerator:
-
     def __init__(self, program_id, op_example_inputs_meta_getter):
         self.program_id = program_id
         self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
@@ -490,21 +482,12 @@ class SequenceUnittestsGenerator:
         )
 
     def _RenderTemplate(self, seq_func_desc):
-        template = jinja_env.get_template("template_full_graph_unittest.jinja")
-        PADDLE_DEBUG_ENABLE_CINN = os.getenv("PADDLE_DEBUG_ENABLE_CINN") not in {
-            "0",
-            "False",
-            "false",
-            "OFF",
-        }
-        counter = itertools.count()
-        input_counter = itertools.count()
-        name2counter = defaultdict(lambda: next(counter))
-        in_name2counter = defaultdict(lambda: next(input_counter))
+        template = jinja_env.get_template(
+            "template_sequence_unittest_for_graphnet.jinja"
+        )
         return template.render(
             seq_func_desc=seq_func_desc,
-            PADDLE_DEBUG_ENABLE_CINN=PADDLE_DEBUG_ENABLE_CINN,
-            tensor_name_converter=lambda x: f"input{in_name2counter[x]}" if 'data' in x else f't{name2counter[x]}',
+            tensor_name_converter=lambda x: x,
         )
 
     def GetCppOperandTypeName(self, op, input_idx):

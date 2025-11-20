@@ -57,6 +57,7 @@ class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
 {%- endfor %}
 
 # --- seperate line ----
+
 {%- for tensor_id in sig.tensor_ids %}
 {%- if 'data' not in sig.tensor_name4tensor_id(tensor_id) %}
 {%- set example_tensor_meta = sig.example_input_meta4tensor_id(tensor_id) %}
@@ -71,17 +72,19 @@ class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
 {%- endfor %}
 
 # --- seperate line ----
+
 import paddle
 
 
 class GraphModule(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
+        {{ "" }}
 
     def forward(self{{",\n\t\t"}}
         {%- for tensor_id in sig.tensor_ids -%}
         {%- if loop.index0 > 0 -%}{{",\n\t\t"}}{%- endif -%}
-        {{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}: paddle.Tensor
+        {{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}
         {%- endfor -%}
     ):
         {%- for tensor_id in sig.tensor_ids -%}
