@@ -52,7 +52,7 @@ def generate_samples(model_name, ir_programs, example_inputs, eval_mode):
     graphnet_sample_results = []
     seg_counter = defaultdict(lambda: itertools.count())
     for module_id, (num_unittests, uid, unittest) in enumerate(
-        GetOutputUnittests(ir_programs, example_inputs)
+        GetOutputUnittests(ir_programs, example_inputs, eval_mode)
     ):
         unique_name = f"{uid}_{next(seg_counter[uid])}"
         input_meta, weight_meta, model = unittest.split("# --- seperate line ----\n")
@@ -125,7 +125,7 @@ def IsBackwardProgram(ir_program):
     return False
 
 
-def GetOutputUnittests(original_programs_file, example_inputs_file):
+def GetOutputUnittests(original_programs_file, example_inputs_file, eval_mode):
     example_inputs_meta_getter = MakeExampleInputsMetaGetter(
         GetClasses(example_inputs_file)
     )
@@ -134,7 +134,7 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
         return ModuleOpUnittestForGraphnetGenerator(
             ir_program,
             example_inputs_meta_getter,
-            eval_mode=FLAGS.eval_mode,
+            eval_mode=eval_mode,
         )
 
     def CountNonBuiltinOps(ir_program):
