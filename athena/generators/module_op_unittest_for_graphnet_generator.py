@@ -55,7 +55,7 @@ class ModuleOpUnittestForGraphnetGenerator:
                 example_dim = 2
                 return [(dim if dim >= 0 else example_dim) for dim in tensor.shape]
 
-        def GetInstanceData(tensor):
+        def GetInstanceDataAndMeta(tensor):
             if tensor.arg_name_as_input is None:
                 return None, None, None, None, None
             tensor_meta = self.example_inputs_meta_getter.Get(
@@ -80,7 +80,7 @@ class ModuleOpUnittestForGraphnetGenerator:
             return data, max_value, min_value, mean, std
 
         def GetInputTensorDesc(input_tensor):
-            data, max_value, min_value, mean, std = GetInstanceData(input_tensor)
+            data, max_value, min_value, mean, std = GetInstanceDataAndMeta(input_tensor)
             return MakeInputTensorDesc(
                 shape=GetInstanceShape(input_tensor),
                 dtype=input_tensor.dtype,

@@ -129,9 +129,8 @@ def main(argv):
     subgraph_idx2samples = {}
     for sample in graphnet_sample_results:
         if sample.subgraph_idx not in subgraph_idx2samples.keys():
-            subgraph_idx2samples[sample.subgraph_idx] = [sample]
-        else:
-            subgraph_idx2samples[sample.subgraph_idx].append(sample)
+            subgraph_idx2samples[sample.subgraph_idx] = []
+        subgraph_idx2samples[sample.subgraph_idx].append(sample)
 
     num_samples = len(graphnet_sample_results)
     for subgraph_idx, samples in subgraph_idx2samples.items():
@@ -148,11 +147,15 @@ def main(argv):
                 )
             if not os.path.exists(subgraph_path):
                 os.makedirs(subgraph_path)
-            WriteToFile(f"{subgraph_path}/model.py", sample.model)
-            WriteToFile(f"{subgraph_path}/weight_meta.py", sample.weight_meta)
-            WriteToFile(f"{subgraph_path}/input_meta.py", sample.input_meta)
+            WriteToFile(f"{subgraph_path}/model.py", samples[sample_idx].model)
+            WriteToFile(
+                f"{subgraph_path}/weight_meta.py", samples[sample_idx].weight_meta
+            )
+            WriteToFile(
+                f"{subgraph_path}/input_meta.py", samples[sample_idx].input_meta
+            )
             with open(os.path.join(subgraph_path, "graph_net.json"), "w") as f:
-                json.dump(sample.metadata, f, indent=4)
+                json.dump(samples[sample_idx].metadata, f, indent=4)
 
 
 def GetSha256sum(content):
@@ -285,7 +288,7 @@ def GetOutputUnittests(
             yield (subgraph_idx, program_hash, unittest)
             subgraph_idx += 1
     else:
-        print(f"split_positions: {split_positions}")
+        print(f"origin split_positions: {split_positions}")
         GenerateOpExampleInputFile(
             programs_file, example_inputs_file, op_example_inputs_file, tmp_dir
         )
@@ -335,7 +338,7 @@ def ExtendStartAndEnd(seq_stmts, split_positions):
     ]
     if split_positions_for_seq_stmts[-1] < len(seq_stmts):
         split_positions_for_seq_stmts.append(len(seq_stmts))
-    print(f"split_positions_for_seq_stmts:{split_positions_for_seq_stmts}")
+    print(f"split_positions_for_seq_stmts: {split_positions_for_seq_stmts}")
     return split_positions_for_seq_stmts
 
 

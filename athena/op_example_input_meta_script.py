@@ -1,10 +1,12 @@
 from athena.util.load_pir_py_classes import GetProgramClasses, GetClasses
-from athena.util.example_inputs_meta_getter import ExampleInputsMetaGetter
 from athena.generators.op_example_input_meta_script_generator import (
     OpExampleInputMetaScriptGenerator,
 )
 from athena.util.primitive_op_extractor import PrimitiveOpExtractor
 from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
+from athena.util.example_inputs_meta_getter import (
+    MakeExampleInputsMetaGetter,
+)
 import athena.ir.ir_op as ir_op
 import sys
 from absl import app
@@ -137,7 +139,9 @@ def OnlyValidTypes(ir_program):
 
 
 def GetOutputUnittests(original_programs_file, example_inputs_file, bucket_size):
-    example_inputs_meta_getter = MakeExampleInputsMetaGetter(example_inputs_file)
+    example_inputs_meta_getter = MakeExampleInputsMetaGetter(
+        GetClasses(example_inputs_file)
+    )
     classes = GetProgramClasses(original_programs_file)
     ir_programs = (
         ir_program
@@ -171,15 +175,6 @@ def GetOutputUnittests(original_programs_file, example_inputs_file, bucket_size)
             file=sys.stderr,
         )
         yield name, unittest
-
-
-def MakeExampleInputsMetaGetter(example_inputs_file):
-    classes = [
-        cls
-        for name, cls in GetClasses(example_inputs_file)
-        if name.startswith("PirProgram_example_input_tensor_meta_")
-    ]
-    return ExampleInputsMetaGetter(records=classes)
 
 
 if __name__ == "__main__":

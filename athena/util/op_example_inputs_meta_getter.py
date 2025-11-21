@@ -14,6 +14,10 @@ class OpInputMeta:
     input_idx: int
     shape: t.Union[ShapeType, t.List[ShapeType], None]
     data: t.Union[ShapeType, t.List[ShapeType], None]
+    max: t.Optional[float]
+    min: t.Optional[float]
+    mean: t.Optional[float]
+    std: t.Optional[float]
 
 
 class OpExampleInputsMetaGetter:
@@ -47,7 +51,11 @@ class OpExampleInputsMetaGetter:
                 op_id=record.op_id,
                 input_idx=record.input_idx,
                 shape=record.shape,
-                data=record.data,
+                data=record.data if hasattr(record, "data") else None,
+                max=record.max_val if hasattr(record, "max_val") else None,
+                min=record.min_val if hasattr(record, "min_val") else None,
+                mean=record.mean if hasattr(record, "mean") else None,
+                std=record.std if hasattr(record, "std") else None,
             )
         return input_meta_key2value
 

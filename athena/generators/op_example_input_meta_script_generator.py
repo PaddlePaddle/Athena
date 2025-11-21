@@ -1,15 +1,14 @@
-from contextlib import contextmanager
 from athena.generators.blocks_generator import BlocksGenerator
 from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
 from athena.generators.paddle_block_unittest_stmts_generator import (
     PaddleBlockUnittestStmtsGenerator,
 )
-import athena.ir.ir_type as ir_type
 from athena.util.input_tensor_desc import MakeInputTensorDesc
 from athena.generators.block_name_generator import BlockNameGenerator
 from collections import namedtuple
 from jinja2 import Template
 import os
+import numpy as np
 
 BlockDescriptor = namedtuple(
     "BlockDescriptor",
@@ -46,7 +45,6 @@ class ProgramBlocksDescriptorGenerator:
         self.unittest_stmts_gen = PaddleBlockUnittestStmtsGenerator(self.block_name_gen)
 
     def Generate(self):
-
         def GetShapeInstance(tensor):
             if tensor.arg_name_as_input is not None:
                 tensor_meta = self.example_inputs_meta_getter.Get(
@@ -58,20 +56,40 @@ class ProgramBlocksDescriptorGenerator:
                 example_dim = 2
                 return [(dim if dim >= 0 else example_dim) for dim in tensor.shape]
 
-        def GetDataInstance(tensor):
+        def GetInstanceDataAndMeta(tensor):
             if tensor.arg_name_as_input is None:
-                return None
+                return None, None, None, None, None
             tensor_meta = self.example_inputs_meta_getter.Get(
                 program_id=self.program_id,
                 input_tensor=tensor,
             )
-            return tensor_meta.data
+            data, max_value, min_value = tensor_meta.data, None, None
+            mean = getattr(tensor_meta, "mean", None)
+            std = getattr(tensor_meta, "std", None)
+
+            if data is not None and isinstance(data, list) and len(data) > 0:
+                array = np.array(data)
+                max_value = np.max(array)
+                min_value = np.min(array)
+                if len(data) > 64:
+                    # Don't save all the values for large array.
+                    data = None
+            else:
+                max_value = getattr(tensor_meta, "max", None)
+                min_value = getattr(tensor_meta, "min", None)
+
+            return data, max_value, min_value, mean, std
 
         def GetInputTensorDesc(input_tensor):
+            data, max_value, min_value, mean, std = GetInstanceDataAndMeta(input_tensor)
             return MakeInputTensorDesc(
                 shape=GetShapeInstance(input_tensor),
                 dtype=input_tensor.dtype,
-                data=GetDataInstance(input_tensor),
+                data=data,
+                max_value=max_value,
+                min_value=min_value,
+                mean=mean,
+                std=std,
             )
 
         def MakeBlockDescriptor(block):
@@ -121,7 +139,6 @@ class ProgramBlocksDescriptorGenerator:
 
 
 class OpExampleInputMetaScriptGenerator:
-
     def __init__(self, ir_programs, example_inputs_meta_getter):
         self.ir_programs = ir_programs
         self.name = "_".join(type(ir_program).__name__ for ir_program in ir_programs)

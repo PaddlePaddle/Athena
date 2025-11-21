@@ -1,17 +1,18 @@
-from dataclasses import dataclass
-from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
-from athena.ir_converters.paddle_type_converter import ConvertTypeToString
-from athena.generators.paddle_func_body_generator import PyCodeStmt
 import typing as t
-from athena.util.input_tensor_desc import MakeInputTensorDesc
+import os
+import jinja2
+import hashlib
+import numpy as np
+from dataclasses import dataclass
+from collections import OrderedDict
+
 import athena.ir.ir_type as ir_type
 import athena.ir.ir_tensor as ir_tensor
 import athena.ir.ir_symbol as ir_symbol
-import os
-import jinja2
-
-import hashlib
 from athena.generators.paddle_c_ops_arg_names import op_name2args
+from athena.generators.paddle_func_body_generator import PyCodeStmt
+from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
+from athena.ir_converters.paddle_type_converter import ConvertTypeToString
 from athena.util.ops_func_signature import (
     InputSpecDesc,
     NullTensorId,
@@ -20,7 +21,7 @@ from athena.util.ops_func_signature import (
     OperandId,
     OpsFuncSignature,
 )
-from collections import OrderedDict
+from athena.util.input_tensor_desc import MakeInputTensorDesc
 
 
 @dataclass
@@ -444,6 +445,24 @@ class SequenceUnittestsGenerator:
             for input_idx, tensor in enumerate(self.GetOpOperandTensors(op))
         ]
 
+    def GetInstanceDataAndMeta(self, tensor_meta):
+        data, max_value, min_value = tensor_meta.data, None, None
+        mean = getattr(tensor_meta, "mean", None)
+        std = getattr(tensor_meta, "std", None)
+
+        if data is not None and isinstance(data, list) and len(data) > 0:
+            array = np.array(data)
+            max_value = np.max(array)
+            min_value = np.min(array)
+            if len(data) > 64:
+                # Don't save all the values for large array.
+                data = None
+        else:
+            max_value = getattr(tensor_meta, "max", None)
+            min_value = getattr(tensor_meta, "min", None)
+
+        return data, max_value, min_value, mean, std
+
     def GetExampleTensorMeta(self, program_id, op, input_idx):
         return self.op_example_inputs_meta_getter.Get(program_id, op.op_id, input_idx)
 
@@ -457,10 +476,15 @@ class SequenceUnittestsGenerator:
         if not isinstance(input_type, ir_type.DenseTensorType):
             raise NotImplementedError()
         dtype = ConvertTypeToString(input_type.dtype)
+        data, max_value, min_value, mean, std = self.GetInstanceDataAndMeta(tensor_meta)
         return MakeInputTensorDesc(
             shape=tensor_meta.shape,
             dtype=dtype,
-            data=tensor_meta.data,
+            data=data,
+            max_value=max_value,
+            min_value=min_value,
+            mean=mean,
+            std=std,
         )
 
     def GetOpOperandTensors(self, op):
