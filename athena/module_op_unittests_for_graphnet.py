@@ -1,9 +1,10 @@
 import os
+import sys
 import json
 from absl import app
 from absl import flags
 import hashlib
-import glob as glob
+import tempfile
 import itertools
 from itertools import groupby
 from collections import defaultdict
@@ -34,6 +35,9 @@ from athena.util.op_example_inputs_meta_getter import (
 from athena.util.ir_program_util import IsBackwardProgram, GetProgramId
 from athena.util.block_op_calls_extractor import BlockOpCallsExtractor
 from athena.util.primitive_op_extractor import PrimitiveOpExtractor
+from athena.op_example_input_meta_script import (
+    GetOutputUnittests as GetOpExampleInputMetaUnittests,
+)
 
 
 FLAGS = flags.FLAGS
@@ -47,12 +51,12 @@ flags.DEFINE_string(
     "",
     "a comma-separated string of integer list to specify the split positions.",
 )
-flags.DEFINE_string("output_dir", "./output-dir", "output directory.")
 flags.DEFINE_boolean(
     "eval_mode",
     False,
     "Generate unittest for eval, which only keep output tensors with maximum depth (longest chain).",
 )
+flags.DEFINE_string("tmp_dir", tempfile.gettempdir(), "tmp directory.")
 
 
 @dataclass
@@ -72,6 +76,7 @@ def generate_samples(
     op_example_inputs,
     split_positions,
     eval_mode,
+    tmp_dir=None,
 ):
     metadata = {
         "framework": "paddle",
@@ -84,7 +89,12 @@ def generate_samples(
     seg_counter = defaultdict(lambda: itertools.count())
     for module_id, (subgraph_idx, uid, unittest) in enumerate(
         GetOutputUnittests(
-            ir_programs, example_inputs, op_example_inputs, split_positions, eval_mode
+            ir_programs,
+            example_inputs,
+            op_example_inputs,
+            split_positions,
+            eval_mode,
+            tmp_dir,
         )
     ):
         unique_name = f"{uid}_{next(seg_counter[uid])}"
@@ -98,8 +108,8 @@ def generate_samples(
             model=model,
         )
         graphnet_sample_results.append(sample)
-        print(f"Genrating {model_name}/subgraph_{module_id}:")
         # PrintToTerminal(unique_name, unittest)
+    print(f"Generate {len(graphnet_sample_results)} graphnet samples.")
     return graphnet_sample_results
 
 
@@ -113,6 +123,7 @@ def main(argv):
         op_example_inputs=FLAGS.op_example_inputs,
         split_positions=split_positions,
         eval_mode=FLAGS.eval_mode,
+        tmp_dir=FLAGS.tmp_dir,
     )
 
     subgraph_idx2samples = {}
@@ -189,9 +200,6 @@ def GetValidIrPrograms(programs_file):
     for cls in list(GetProgramClasses(programs_file)):
         ir_program = cls()
         num_ops, num_outs = CountNonBuiltinOps(ir_program)
-        op_names = GetOpNames(ir_program)
-        print(f"num_ops={num_ops}, len(op_names)={len(op_names)}")
-        print(f"op_names:{op_names}")
         # skip the small ir_program
         if (
             not IsBackwardProgram(ir_program)
@@ -208,7 +216,34 @@ def GetValidIrPrograms(programs_file):
                 pass
 
     ir_programs = [v[1] for k, v in ir_programs_dict.items()]
+    print(f"Totally {len(ir_programs)} valid ir_programs.")
     return ir_programs
+
+
+def GenerateOpExampleInputFile(
+    programs_file, example_inputs_file, op_example_inputs_file, tmp_dir
+):
+    if os.path.isfile(op_example_inputs_file):
+        return
+
+    if tmp_dir is None:
+        tmp_dir = tempfile.gettempdir()
+
+    print(f"Generate {op_example_inputs_file} ...")
+    tmp_output_file_prefix = "tmp_op_example_input_"
+    for name, unittest in GetOpExampleInputMetaUnittests(
+        programs_file, example_inputs_file, bucket_size=128
+    ):
+        sha256sum = GetSha256sum(unittest)
+        tmp_output_filepath = os.path.join(
+            tmp_dir, f"{tmp_output_file_prefix}{sha256sum[0:32]}.py"
+        )
+        WriteToFile(tmp_output_filepath, unittest)
+
+        # Execute the generated tmp file
+        System(
+            f"ATHENA_WHILE_LOOP_LIMIT=8 {sys.executable} {tmp_output_filepath} --max_try_cnt=10 --output_file={op_example_inputs_file}"
+        )
 
 
 def GetOutputUnittests(
@@ -217,6 +252,7 @@ def GetOutputUnittests(
     op_example_inputs_file,
     split_positions,
     eval_mode,
+    tmp_dir=None,
 ):
     def MakeModuleUnittestGenerator(ir_program, example_inputs_meta_getter):
         return ModuleOpUnittestForGraphnetGenerator(
@@ -250,6 +286,9 @@ def GetOutputUnittests(
             subgraph_idx += 1
     else:
         print(f"split_positions: {split_positions}")
+        GenerateOpExampleInputFile(
+            programs_file, example_inputs_file, op_example_inputs_file, tmp_dir
+        )
         op_example_inputs_meta_getter = MakeOpExampleInputsMetaGetter(
             GetClasses(op_example_inputs_file)
         )
@@ -357,6 +396,14 @@ def AllInputOutputTypesSupported(ir_program_or_block):
             for op in primitive_op_extractor.Extract(ir_program)
             for in_out_type in op.input_types + op.output_types
         )
+
+
+def System(cmd):
+    print(cmd, file=sys.stderr)
+    ret = os.system(cmd)
+    if ret != 0:
+        sys.exit(ret)
+        return
 
 
 if __name__ == "__main__":

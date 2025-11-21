@@ -29,12 +29,12 @@ def main(argv):
     original_programs_file = f"{FLAGS.input_dir}/original_programs.py"
     example_inputs_file = f"{FLAGS.input_dir}/programs_example_input_tensor_meta.py"
     for name, unittest in GetOutputUnittests(
-        original_programs_file, example_inputs_file
+        original_programs_file, example_inputs_file, FLAGS.bucket_size
     ):
         sha256sum = GetSha256sum(unittest)
         filepath = f"{FLAGS.output_dir}/{FLAGS.output_file_prefix}{sha256sum[0:32]}.py"
         WriteToFile(filepath, unittest)
-        PrintToTerminal(name, filepath, unittest)
+        # PrintToTerminal(name, filepath, unittest)
 
 
 def GetSha256sum(content):
@@ -136,7 +136,7 @@ def OnlyValidTypes(ir_program):
     )
 
 
-def GetOutputUnittests(original_programs_file, example_inputs_file):
+def GetOutputUnittests(original_programs_file, example_inputs_file, bucket_size):
     example_inputs_meta_getter = MakeExampleInputsMetaGetter(example_inputs_file)
     classes = GetProgramClasses(original_programs_file)
     ir_programs = (
@@ -151,7 +151,7 @@ def GetOutputUnittests(original_programs_file, example_inputs_file):
 
     def GetBucket(elem):
         i, _ = elem
-        return i // FLAGS.bucket_size
+        return i // bucket_size
 
     ir_program_groups = itertools.groupby(enumerate(ir_programs), GetBucket)
     for _, ir_program_group in ir_program_groups:

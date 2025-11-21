@@ -33,9 +33,9 @@ class InputOutputTensorsExtractor:
                 tensor for tensor in self.output_tensors if tensor.name not in ancestors
             ]
 
-        print(
-            f"Totally {len(self.input_tensors)} input tensors, {len(self.output_tensors)} output tensors."
-        )
+        # print(
+        #     f"Totally {len(self.input_tensors)} input tensors, {len(self.output_tensors)} output tensors."
+        # )
         return self.input_tensors, self.output_tensors
 
     def pd_op_data(self, op):
