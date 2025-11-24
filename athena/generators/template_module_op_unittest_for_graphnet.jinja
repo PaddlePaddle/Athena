@@ -1,12 +1,12 @@
-{% macro get_input_tensor_instance(block, block_idx, input_idx) -%}
-{%- set shape = block.input_tensor_descs[input_idx].shape -%}
-{%- set dtype = block.input_tensor_descs[input_idx].dtype -%}
-{%- set big_dtype = block.input_tensor_descs[input_idx].big_dtype -%}
-{%- set data = block.input_tensor_descs[input_idx].data -%}
-{%- set min = block.input_tensor_descs[input_idx].min -%}
-{%- set max = block.input_tensor_descs[input_idx].max -%}
-{%- set mean = block.input_tensor_descs[input_idx].mean -%}
-{%- set std = block.input_tensor_descs[input_idx].std -%}
+{% macro get_input_tensor_instance(example_tensor_meta) -%}
+{%- set shape = example_tensor_meta.shape -%}
+{%- set dtype = example_tensor_meta.dtype -%}
+{%- set big_dtype = example_tensor_meta.big_dtype -%}
+{%- set data = example_tensor_meta.data -%}
+{%- set min = example_tensor_meta.min -%}
+{%- set max = example_tensor_meta.max -%}
+{%- set mean = example_tensor_meta.mean -%}
+{%- set std = example_tensor_meta.std -%}
 {%- if data != None -%}
     shape = {{shape}}
     dtype = '{{dtype}}'

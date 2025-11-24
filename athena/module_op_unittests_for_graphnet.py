@@ -136,14 +136,14 @@ def main(argv):
     for subgraph_idx, samples in subgraph_idx2samples.items():
         for sample_idx in range(len(samples)):
             if num_samples == 1 and len(samples) == 1:
-                subgraph_path = f"{FLAGS.output_dir}"
+                subgraph_path = FLAGS.output_dir
             elif len(samples) == 1:
                 subgraph_path = os.path.join(
-                    f"{FLAGS.output_dir}", f"subgraph_{subgraph_idx}"
+                    FLAGS.output_dir, f"subgraph_{subgraph_idx}"
                 )
             else:
                 subgraph_path = os.path.join(
-                    f"{FLAGS.output_dir}", f"subgraph_{subgraph_idx}_{sample_idx}"
+                    FLAGS.output_dir, f"subgraph_{subgraph_idx}_{sample_idx}"
                 )
             if not os.path.exists(subgraph_path):
                 os.makedirs(subgraph_path)
@@ -227,7 +227,8 @@ def GenerateOpExampleInputFile(
     programs_file, example_inputs_file, op_example_inputs_file, tmp_dir
 ):
     if os.path.isfile(op_example_inputs_file):
-        return
+        print(f"Remove the existing {op_example_inputs_file}")
+        os.remove(op_example_inputs_file)
 
     if tmp_dir is None:
         tmp_dir = tempfile.gettempdir()
@@ -345,8 +346,8 @@ def ExtendStartAndEnd(seq_stmts, split_positions):
 def IsPrimitive(stmt):
     op = stmt.op
     return all(
-        l is None or len(l) == 0
-        for l in (
+        arg_names_or_types is None or len(arg_names_or_types) == 0
+        for arg_names_or_types in (
             op.block_positional_arg_names,
             op.block_keyword_arg_names,
             op.block_positional_arg_types,
