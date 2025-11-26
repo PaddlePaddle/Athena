@@ -32,7 +32,7 @@ class SequenceFuncDesc:
     get_unused_tensor_name: t.Callable[PyCodeStmt, t.List[str]]
 
 
-class SequenceUnittestsGenerator:
+class GraphnetSequenceSampleGenerator:
     def __init__(self, program_id, op_example_inputs_meta_getter):
         self.program_id = program_id
         self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
@@ -506,9 +506,7 @@ class SequenceUnittestsGenerator:
         )
 
     def _RenderTemplate(self, seq_func_desc):
-        template = jinja_env.get_template(
-            "template_sequence_unittest_for_graphnet.jinja"
-        )
+        template = jinja_env.get_template("template_graphnet_sequence_sample.jinja")
         return template.render(
             seq_func_desc=seq_func_desc,
             tensor_name_converter=lambda x: x,

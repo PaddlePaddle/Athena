@@ -103,10 +103,16 @@ class GraphModule(paddle.nn.Layer):
         super().__init__()
         {{ "" }}
 
-    def forward(self{{",\n\t\t"}}
+    def forward(self{{","}}
         {%- for tensor_id in sig.tensor_ids -%}
-        {%- if loop.index0 > 0 -%}{{",\n\t\t"}}{%- endif -%}
-        {{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}
+            {%- if 'parameter' in sig.tensor_name4tensor_id(tensor_id) %}
+            {{"\t\t"}}{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}{{","}}
+            {%- endif %}
+        {%- endfor -%}
+        {%- for tensor_id in sig.tensor_ids -%}
+            {%- if 'parameter' not in sig.tensor_name4tensor_id(tensor_id) %}
+            {{"\t\t"}}{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}{{","}}
+            {%- endif %}
         {%- endfor -%}
     ):
         {%- for tensor_id in sig.tensor_ids -%}

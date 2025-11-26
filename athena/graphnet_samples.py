@@ -13,14 +13,14 @@ from typing import Dict
 
 from athena.generators.blocks_generator import BlocksGenerator
 from athena.generators.block_name_generator import BlockNameGenerator
-from athena.generators.module_op_unittest_for_graphnet_generator import (
-    ModuleOpUnittestForGraphnetGenerator,
+from athena.generators.graphnet_module_op_sample_generator import (
+    GraphnetModuleOpSampleGenerator,
 )
 from athena.generators.paddle_block_unittest_stmts_generator import (
     PaddleBlockUnittestStmtsGenerator,
 )
-from athena.generators.sequence_unittests_generator_for_graphnet import (
-    SequenceUnittestsGenerator,
+from athena.generators.graphnet_sequence_sample_generator import (
+    GraphnetSequenceSampleGenerator,
 )
 import athena.ir.ir_op as ir_op
 import athena.ir.ir_type as ir_type
@@ -54,7 +54,7 @@ flags.DEFINE_string(
 flags.DEFINE_boolean(
     "eval_mode",
     False,
-    "Generate unittest for eval, which only keep output tensors with maximum depth (longest chain).",
+    "Generate graphnet sample for eval, which only keep output tensors with maximum depth (longest chain).",
 )
 flags.DEFINE_string("tmp_dir", tempfile.gettempdir(), "tmp directory.")
 
@@ -69,7 +69,7 @@ class GraphnetSample:
     model: str
 
 
-def generate_samples(
+def RunGeneration(
     model_name,
     ir_programs,
     example_inputs,
@@ -87,8 +87,8 @@ def generate_samples(
 
     graphnet_sample_results = []
     seg_counter = defaultdict(lambda: itertools.count())
-    for module_id, (subgraph_idx, uid, unittest) in enumerate(
-        GetOutputUnittests(
+    for module_id, (subgraph_idx, uid, sample_str) in enumerate(
+        GetOutputSampleStrings(
             ir_programs,
             example_inputs,
             op_example_inputs,
@@ -98,7 +98,7 @@ def generate_samples(
         )
     ):
         unique_name = f"{uid}_{next(seg_counter[uid])}"
-        input_meta, weight_meta, model = unittest.split("# --- seperate line ----\n")
+        input_meta, weight_meta, model = sample_str.split("# --- seperate line ----\n")
         sample = GraphnetSample(
             unique_name=unique_name,
             subgraph_idx=subgraph_idx,
@@ -108,7 +108,7 @@ def generate_samples(
             model=model,
         )
         graphnet_sample_results.append(sample)
-        # PrintToTerminal(unique_name, unittest)
+        # PrintToTerminal(unique_name, sample_str)
     print(f"Generate {len(graphnet_sample_results)} graphnet samples.")
     return graphnet_sample_results
 
@@ -116,7 +116,7 @@ def generate_samples(
 def main(argv):
     split_positions = [int(x) for x in FLAGS.split_positions.split(",") if x.strip()]
 
-    graphnet_sample_results = generate_samples(
+    graphnet_sample_results = RunGeneration(
         model_name=FLAGS.model_name,
         ir_programs=FLAGS.ir_programs,
         example_inputs=FLAGS.example_inputs,
@@ -173,16 +173,16 @@ def GetSeqStmtsHash(seq_stmts):
     return GetSha256sum(op_names)[0:32]
 
 
-def PrintToTerminal(name, unittest):
+def PrintToTerminal(name, sample_str):
     print("# file-splitter-begin-fusion-op-name: ", name)
-    print(unittest)
+    print(sample_str)
     print("# file-splitter--end--fusion-op-name: ", name)
 
 
-def WriteToFile(filepath, unittest):
+def WriteToFile(filepath, content):
     print(f"Write to {filepath}")
     with open(filepath, "w") as f:
-        f.write(unittest)
+        f.write(content)
 
 
 def CountNonBuiltinOps(ir_program):
@@ -250,7 +250,7 @@ def GenerateOpExampleInputFile(
         )
 
 
-def GetOutputUnittests(
+def GetOutputSampleStrings(
     programs_file,
     example_inputs_file,
     op_example_inputs_file,
@@ -258,17 +258,17 @@ def GetOutputUnittests(
     eval_mode,
     tmp_dir=None,
 ):
-    def MakeModuleUnittestGenerator(ir_program, example_inputs_meta_getter):
-        return ModuleOpUnittestForGraphnetGenerator(
+    def MakeModuleOpSampleGenerator(ir_program, example_inputs_meta_getter):
+        return GraphnetModuleOpSampleGenerator(
             ir_program,
             example_inputs_meta_getter,
             eval_mode=eval_mode,
         )
 
-    def MakeSequenceUnittestGenerator(
+    def MakeSequenceSampleGenerator(
         program_id, seq_stmts, op_example_inputs_meta_getter
     ):
-        generator = SequenceUnittestsGenerator(
+        generator = GraphnetSequenceSampleGenerator(
             program_id, op_example_inputs_meta_getter
         )
         return generator.Generate(seq_stmts)
@@ -282,11 +282,11 @@ def GetOutputUnittests(
         for ir_program in ir_programs:
             op_names = GetOpNames(ir_program)
             program_hash = GetOpNamesHash(op_names)
-            generator = MakeModuleUnittestGenerator(
+            generator = MakeModuleOpSampleGenerator(
                 ir_program, example_inputs_meta_getter
             )
-            unittest = generator.Generate()
-            yield (subgraph_idx, program_hash, unittest)
+            sample_str = generator.Generate()
+            yield (subgraph_idx, program_hash, sample_str)
             subgraph_idx += 1
     else:
         print(f"origin split_positions: {split_positions}")
@@ -311,7 +311,7 @@ def GetOutputUnittests(
             if op_example_inputs_meta_getter.HasAllInputs(program_id, seq_stmts[0].op)
         ]
 
-        generated_unittests = set()
+        generated_sample_strs = set()
         subgraph_idx = 0
         for program_id, seq_stmts in program_seq_stmts_list:
             split_positions_for_seq_stmts = ExtendStartAndEnd(
@@ -323,13 +323,13 @@ def GetOutputUnittests(
                         i + 1
                     ]
                 ]
-                unittest = MakeSequenceUnittestGenerator(
+                sample_str = MakeSequenceSampleGenerator(
                     program_id, seq_stmts_slice, op_example_inputs_meta_getter
                 )
-                if unittest not in generated_unittests:
-                    generated_unittests.add(unittest)
+                if sample_str not in generated_sample_strs:
+                    generated_sample_strs.add(sample_str)
                     stmt_hash = GetSeqStmtsHash(seq_stmts_slice)
-                    yield (subgraph_idx, stmt_hash, unittest)
+                    yield (subgraph_idx, stmt_hash, sample_str)
             subgraph_idx += 1
 
 
