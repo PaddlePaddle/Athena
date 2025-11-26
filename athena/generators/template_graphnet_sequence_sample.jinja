@@ -5,20 +5,46 @@
 {%- set dtype = tensor_meta.dtype -%}
 {%- set big_dtype = tensor_meta.big_dtype -%}
 {%- set data = tensor_meta.data -%}
+{%- set mean = tensor_meta.mean -%}
+{%- set std = tensor_meta.std -%}
 {%- set min = tensor_meta.min -%}
 {%- set max = tensor_meta.max -%}
 {%- if data != None -%}
-    {%- if data == [] and shape == [] -%}
-    paddle.to_tensor({{data}}, dtype='{{dtype}}')
-    {%- else -%}
-    paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
-    {%- endif -%}
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    data = {{data}}
+    {{ "" }}
 {%- elif big_dtype == "bool" -%}
-    paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
+    shape = {{shape}}
+    dtype = 'bool'
+    min_val = 0
+    max_val = 2
+    data = None
+    {{ "" }}
 {%- elif big_dtype == "int64" -%}
-    paddle.cast(paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='int64'), '{{dtype}}')
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    min_val = {{min}}
+    max_val = {{max}}
+    data = None
+    {{ "" }}
 {%- elif big_dtype == "float64" -%}
-    paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
+    shape = {{shape}}
+    dtype = '{{dtype}}'
+    {%- if min is not none %}
+    min_val = float('{{min}}')
+    {%- endif %}
+    {%- if max is not none %}
+    max_val = float('{{max}}')
+    {%- endif %}
+    {%- if mean is not none %}
+    mean = float('{{mean}}')
+    {%- endif %}
+    {%- if std is not none %}
+    std = float('{{std}}')
+    {%- endif %}
+    data = None
+    {{ "" }}
 {%- endif -%}
 {%- endmacro %}
 
@@ -44,44 +70,49 @@
 
 
 {%- for tensor_id in sig.tensor_ids %}
-{%- if 'data' in sig.tensor_name4tensor_id(tensor_id) %}
+{%- if 'parameter' not in sig.tensor_name4tensor_id(tensor_id) %}
 {%- set example_tensor_meta = sig.example_input_meta4tensor_id(tensor_id) %}
 {%- set shape, dtype = sig.input_spec_shape_dtype4tensor_id(tensor_id) %}
 class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
     name = "{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}"
-    shape = {{shape}}
-    dtype = '{{dtype}}'
-    data = None
+    {{get_input_tensor_instance(example_tensor_meta)}}
 {{ '\n' }}
 {%- endif %}
 {%- endfor %}
 
 # --- seperate line ----
+
 {%- for tensor_id in sig.tensor_ids %}
-{%- if 'data' not in sig.tensor_name4tensor_id(tensor_id) %}
+{%- if 'parameter' in sig.tensor_name4tensor_id(tensor_id) %}
 {%- set example_tensor_meta = sig.example_input_meta4tensor_id(tensor_id) %}
 {%- set shape, dtype = sig.input_spec_shape_dtype4tensor_id(tensor_id) %}
 class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
     name = "{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}"
-    shape = {{shape}}
-    dtype = '{{dtype}}'
-    data = None
+    {{get_input_tensor_instance(example_tensor_meta)}}
 {{ '\n' }}
 {%- endif %}
 {%- endfor %}
 
 # --- seperate line ----
+
 import paddle
 
 
 class GraphModule(paddle.nn.Layer):
     def __init__(self):
         super().__init__()
+        {{ "" }}
 
-    def forward(self{{",\n\t\t"}}
+    def forward(self{{","}}
         {%- for tensor_id in sig.tensor_ids -%}
-        {%- if loop.index0 > 0 -%}{{",\n\t\t"}}{%- endif -%}
-        {{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}: paddle.Tensor
+            {%- if 'parameter' in sig.tensor_name4tensor_id(tensor_id) %}
+            {{"\t\t"}}{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}{{","}}
+            {%- endif %}
+        {%- endfor -%}
+        {%- for tensor_id in sig.tensor_ids -%}
+            {%- if 'parameter' not in sig.tensor_name4tensor_id(tensor_id) %}
+            {{"\t\t"}}{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}{{","}}
+            {%- endif %}
         {%- endfor -%}
     ):
         {%- for tensor_id in sig.tensor_ids -%}

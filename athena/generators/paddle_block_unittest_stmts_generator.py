@@ -10,7 +10,7 @@ class PaddleBlockUnittestStmtsGenerator:
         self.block_name_generator = block_name_generator
 
     def Generate(
-        self, block: Block, eval_mode: bool
+        self, block: Block, eval_mode: bool = False
     ) -> Tuple[List[Tensor], List["PyCodeStmt"]]:
         paddle_func_body_generator = PaddleFuncBodyGenerator(
             block.block_func,

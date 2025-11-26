@@ -1,33 +1,27 @@
-from dataclasses import dataclass
-from athena.ir_converters.paddle_op_converter import ConvertToPaddleOp
-from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
-from athena.ir_converters.paddle_type_converter import ConvertTypeToString
-from athena.generators.paddle_op_call_generator import PaddleOpCallGenerator
-from athena.generators.paddle_func_body_generator import PyCodeStmt
 import typing as t
-from athena.util.input_tensor_desc import InputTensorDesc, MakeInputTensorDesc
+import os
+import jinja2
+import hashlib
+import numpy as np
+from dataclasses import dataclass
+from collections import OrderedDict
+
 import athena.ir.ir_type as ir_type
 import athena.ir.ir_tensor as ir_tensor
 import athena.ir.ir_symbol as ir_symbol
-from collections import namedtuple
-import os
-import jinja2
-
-import hashlib
 from athena.generators.paddle_c_ops_arg_names import op_name2args
-import typing as t
-import random
+from athena.generators.paddle_func_body_generator import PyCodeStmt
+from athena.ir_converters.paddle_tensor_converter import ConvertToPaddleTensor
+from athena.ir_converters.paddle_type_converter import ConvertTypeToString
 from athena.util.ops_func_signature import (
     InputSpecDesc,
-    TensorId,
     NullTensorId,
     OperandTensorId,
     TensorListMemberId,
     OperandId,
     OpsFuncSignature,
 )
-from collections import OrderedDict, defaultdict
-import itertools
+from athena.util.input_tensor_desc import MakeInputTensorDesc
 
 
 @dataclass
@@ -38,8 +32,7 @@ class SequenceFuncDesc:
     get_unused_tensor_name: t.Callable[PyCodeStmt, t.List[str]]
 
 
-class SequenceUnittestsGenerator:
-
+class GraphnetSequenceSampleGenerator:
     def __init__(self, program_id, op_example_inputs_meta_getter):
         self.program_id = program_id
         self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
@@ -452,6 +445,24 @@ class SequenceUnittestsGenerator:
             for input_idx, tensor in enumerate(self.GetOpOperandTensors(op))
         ]
 
+    def GetInstanceDataAndMeta(self, tensor_meta):
+        data, max_value, min_value = tensor_meta.data, None, None
+        mean = getattr(tensor_meta, "mean", None)
+        std = getattr(tensor_meta, "std", None)
+
+        if data is not None and isinstance(data, list) and len(data) > 0:
+            array = np.array(data)
+            max_value = np.max(array)
+            min_value = np.min(array)
+            if len(data) > 64:
+                # Don't save all the values for large array.
+                data = None
+        else:
+            max_value = getattr(tensor_meta, "max", None)
+            min_value = getattr(tensor_meta, "min", None)
+
+        return data, max_value, min_value, mean, std
+
     def GetExampleTensorMeta(self, program_id, op, input_idx):
         return self.op_example_inputs_meta_getter.Get(program_id, op.op_id, input_idx)
 
@@ -465,10 +476,15 @@ class SequenceUnittestsGenerator:
         if not isinstance(input_type, ir_type.DenseTensorType):
             raise NotImplementedError()
         dtype = ConvertTypeToString(input_type.dtype)
+        data, max_value, min_value, mean, std = self.GetInstanceDataAndMeta(tensor_meta)
         return MakeInputTensorDesc(
             shape=tensor_meta.shape,
             dtype=dtype,
-            data=tensor_meta.data,
+            data=data,
+            max_value=max_value,
+            min_value=min_value,
+            mean=mean,
+            std=std,
         )
 
     def GetOpOperandTensors(self, op):
@@ -490,21 +506,10 @@ class SequenceUnittestsGenerator:
         )
 
     def _RenderTemplate(self, seq_func_desc):
-        template = jinja_env.get_template("template_full_graph_unittest.jinja")
-        PADDLE_DEBUG_ENABLE_CINN = os.getenv("PADDLE_DEBUG_ENABLE_CINN") not in {
-            "0",
-            "False",
-            "false",
-            "OFF",
-        }
-        counter = itertools.count()
-        input_counter = itertools.count()
-        name2counter = defaultdict(lambda: next(counter))
-        in_name2counter = defaultdict(lambda: next(input_counter))
+        template = jinja_env.get_template("template_graphnet_sequence_sample.jinja")
         return template.render(
             seq_func_desc=seq_func_desc,
-            PADDLE_DEBUG_ENABLE_CINN=PADDLE_DEBUG_ENABLE_CINN,
-            tensor_name_converter=lambda x: f"input{in_name2counter[x]}" if 'data' in x else f't{name2counter[x]}',
+            tensor_name_converter=lambda x: x,
         )
 
     def GetCppOperandTypeName(self, op, input_idx):

@@ -33,7 +33,7 @@ InputSpecDesc = namedtuple(
 )
 
 
-class ModuleOpUnittestForGraphnetGenerator:
+class GraphnetModuleOpSampleGenerator:
     def __init__(self, ir_program, example_inputs_meta_getter, eval_mode=False):
         self.example_inputs_meta_getter = example_inputs_meta_getter
         self.eval_mode = eval_mode
@@ -55,7 +55,7 @@ class ModuleOpUnittestForGraphnetGenerator:
                 example_dim = 2
                 return [(dim if dim >= 0 else example_dim) for dim in tensor.shape]
 
-        def GetInstanceData(tensor):
+        def GetInstanceDataAndMeta(tensor):
             if tensor.arg_name_as_input is None:
                 return None, None, None, None, None
             tensor_meta = self.example_inputs_meta_getter.Get(
@@ -80,7 +80,7 @@ class ModuleOpUnittestForGraphnetGenerator:
             return data, max_value, min_value, mean, std
 
         def GetInputTensorDesc(input_tensor):
-            data, max_value, min_value, mean, std = GetInstanceData(input_tensor)
+            data, max_value, min_value, mean, std = GetInstanceDataAndMeta(input_tensor)
             return MakeInputTensorDesc(
                 shape=GetInstanceShape(input_tensor),
                 dtype=input_tensor.dtype,
@@ -135,9 +135,7 @@ class ModuleOpUnittestForGraphnetGenerator:
         return self._RenderTemplate(blocks=blocks)
 
     def _RenderTemplate(self, blocks):
-        template = jinja_env.get_template(
-            "template_module_op_unittest_for_graphnet.jinja"
-        )
+        template = jinja_env.get_template("template_graphnet_module_op_sample.jinja")
         return template.render(
             blocks=blocks,
             tensor_name_converter=lambda x: x,

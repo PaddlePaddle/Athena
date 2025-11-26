@@ -8,9 +8,34 @@ import traceback
 import datetime
 
 flags.DEFINE_integer("max_try_cnt", 10, "max try cnt")
+flags.DEFINE_integer("random_seed", 123, "output file")
 flags.DEFINE_string("output_file", "", "output file")
 
 FLAGS = flags.FLAGS
+
+
+def SetSeed(random_seed):
+    paddle.seed(random_seed)
+    random.seed(random_seed)
+    np.random.seed(random_seed)
+
+
+def InitIntegerTensor(shape, dtype, min_val, max_val):
+    array = np.random.randint(
+        low=min_val, high=max_val + 1, size=shape, dtype="int64"
+    )
+    return paddle.to_tensor(array).cast(dtype)
+
+
+def InitFloatTensor(shape, dtype, mean, std, min_val, max_val):
+    if mean is not None and std is not None:
+        # NumPy does not support truncated normal, we simulate it here.
+        array = np.random.normal(0, 1, shape) * std * 0.2 + mean
+        array = np.clip(array, min_val, max_val)
+    else:
+        array = np.random.uniform(low=min_val, high=max_val, size=shape)
+    return paddle.to_tensor(array).cast(dtype)
+
 
 def InitTensorShape(tensor):
     if tensor is None:
@@ -23,6 +48,37 @@ def InitTensorShape(tensor):
         raise NotImplementedError(f"type(tensor): {type(tensor)}")
     return tensor.shape
 
+
+def CalculateTensorMeta(tensor, meta_name):
+    if meta_name == "mean":
+        return paddle.mean(tensor).item()
+    elif meta_name == "std":
+        return paddle.std(tensor).item()
+    elif meta_name == "max":
+        return paddle.max(tensor).item()
+    elif meta_name == "min":
+        return paddle.min(tensor).item()
+    else:
+        raise NotImplementedError(f"meta_name: {meta_name}")
+
+
+def InitTensorMeta(tensor, meta_name):
+    if tensor is None:
+        return None
+    if isinstance(tensor, list) and len(tensor) > 0 and isinstance(tensor[0], int):
+        return None
+    if isinstance(tensor, list):
+        return [InitTensorMema(t, meta_name) for t in tensor]
+    if not hasattr(tensor, meta_name):
+        raise NotImplementedError(f"type(tensor): {type(tensor)}, meta_name: {meta_name}")
+    if tensor.dtype in [paddle.float16, paddle.bfloat16]:
+        return float(CalculateTensorMeta(tensor.cast("float32"), meta_name))
+    elif tensor.dtype in [paddle.float32, paddle.float64]:
+        return float(CalculateTensorMeta(tensor, meta_name))
+    else:
+        return CalculateTensorMeta(tensor, meta_name) if meta_name in ["max", "min"] else None
+
+
 def InitTensorData(tensor):
     if tensor is None:
         return None
@@ -32,7 +88,7 @@ def InitTensorData(tensor):
         return [InitTensorData(t) for t in tensor]
     if not hasattr(tensor, 'numel'):
         raise NotImplementedError(f"type(tensor): {type(tensor)}")
-    kLimit = 32
+    kLimit = 64
     if tensor.numel().item() >= kLimit:
         return None
     if not hasattr(tensor, 'numpy'):
@@ -44,10 +100,16 @@ def InitTensorData(tensor):
         return None
     return ndarray.tolist()
 
+
 def IsInteger(dtype):
     return np.dtype(dtype).char in np.typecodes['AllInteger']
 
-def GetRecordClass(program_id, op_id, op_name, input_idx, shape, data):
+
+def MetaValueToString(value):
+    return f"float('{value}')" if isinstance(value, float) else str(value)
+
+
+def GetRecordClass(program_id, op_id, op_name, input_idx, shape, mean, std, max, min, data):
     return f"""
 class PirProgram_op_input_tensor_meta_{random.randint(0, sys.maxsize)}:
     program_id = {program_id}
@@ -55,6 +117,10 @@ class PirProgram_op_input_tensor_meta_{random.randint(0, sys.maxsize)}:
     op_name = "{op_name}"
     input_idx = {input_idx}
     shape = {str(shape)}
+    mean = {MetaValueToString(mean)}
+    std = {MetaValueToString(std)}
+    max_val = {MetaValueToString(max)}
+    min_val = {MetaValueToString(min)}
     data = {str(data)}
 
 """
@@ -74,14 +140,16 @@ def AppendRecordClassToOutputFile(content):
 {%- set data = block.input_tensor_descs[input_idx].data -%}
 {%- set min = block.input_tensor_descs[input_idx].min -%}
 {%- set max = block.input_tensor_descs[input_idx].max -%}
+{%- set mean = block.input_tensor_descs[input_idx].mean -%}
+{%- set std = block.input_tensor_descs[input_idx].std -%}
 {%- if data != None -%}
     paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
 {%- elif big_dtype == "bool" -%}
     paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')
 {%- elif big_dtype == "int64" -%}
-    paddle.cast(paddle.randint(low={{min}}, high={{max}}, shape={{shape}}, dtype='int64'), '{{dtype}}')
+    InitIntegerTensor(shape={{shape}}, dtype='{{dtype}}', min_val={{min}}, max_val={{max}})
 {%- elif big_dtype == "float64" -%}
-    paddle.uniform({{shape}}, dtype='{{dtype}}', min={{min}}, max={{max}})
+    InitFloatTensor(shape={{shape}}, dtype='{{dtype}}', mean={{mean}}, std={{std}}, min_val={{min}}, max_val={{max}})
 {%- endif -%}
 {%- endmacro -%}
 
@@ -89,6 +157,10 @@ def AppendRecordClassToOutputFile(content):
 {% for program_id, blocks in programs %}
 def InferAndSaveOpInputDims_Program{{program_id}}():
     op_input2shape = {}
+    op_input2mean = {}
+    op_input2std = {}
+    op_input2max = {}
+    op_input2min = {}
     op_input2data = {}
 
     def GetInputMetaRecorder(op_name, op_id, *inputs):
@@ -97,11 +169,18 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
                 (op_id, input_idx) in op_input2shape
                 for input_idx in range(len(inputs))
             )
+
         if AllInitialized():
             return lambda: None
+
         for input_idx in range(len(inputs)):
             op_input2shape[(op_id, input_idx)] = InitTensorShape(inputs[input_idx])
+            op_input2mean[(op_id, input_idx)] = InitTensorMeta(inputs[input_idx], "mean")
+            op_input2std[(op_id, input_idx)] = InitTensorMeta(inputs[input_idx], "std")
+            op_input2max[(op_id, input_idx)] = InitTensorMeta(inputs[input_idx], "max")
+            op_input2min[(op_id, input_idx)] = InitTensorMeta(inputs[input_idx], "min")
             op_input2data[(op_id, input_idx)] = InitTensorData(inputs[input_idx])
+
         def Record():
             for input_idx in range(len(inputs)):
                 shape = op_input2shape.get((op_id, input_idx), None)
@@ -113,6 +192,10 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
                     op_name=op_name,
                     input_idx=input_idx,
                     shape=shape,
+                    mean=op_input2mean.get((op_id, input_idx), None),
+                    std=op_input2std.get((op_id, input_idx), None),
+                    max=op_input2max.get((op_id, input_idx), None),
+                    min=op_input2min.get((op_id, input_idx), None),
                     data=op_input2data.get((op_id, input_idx), None),
                 ))
         return Record
@@ -134,7 +217,7 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
     {%- set block_idx = loop.index0 %}
 
         def {{block.block_name}}(self, {{block.input_arg_names | join(", ")}}):
-            
+
         {%- for stmt in block.stmts %}
         {%- set stmt_idx = loop.index0 %}
             # ({{stmt.outputs_type_strs|join(", ")}}) <- ({{stmt.inputs_type_strs|join(", ")}})
@@ -154,7 +237,7 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
             {%- for unused_var in block.get_unused_vars(stmt_idx) %}
             del {{unused_var}}
             {%- endfor %}
-            
+
         {%- endfor %}
             return {{block.output_arg_names | join(", ")}},
     {%- endfor %}
@@ -178,6 +261,8 @@ def InferAndSaveOpInputDims_Program{{program_id}}():
 exitcode = 0
 
 def InferAndSaveOpInputDims(argv):
+    SetSeed(FLAGS.random_seed)
+
     global exitcode
     print("start InferAndSaveOpInputDims", file=sys.stderr)
 {%- for program_id, blocks in programs %}
@@ -190,6 +275,7 @@ def InferAndSaveOpInputDims(argv):
         traceback.print_exc()
 {%- endfor %}
     sys.exit(exitcode)
-    
+
+
 if __name__ == '__main__':
     app.run(InferAndSaveOpInputDims)
