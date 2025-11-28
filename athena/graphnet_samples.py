@@ -253,9 +253,8 @@ def GenerateOpExampleInputFile(
         WriteToFile(tmp_output_filepath, unittest)
 
         # Execute the generated tmp file
-        System(
-            f"ATHENA_WHILE_LOOP_LIMIT=8 {sys.executable} {tmp_output_filepath} --max_try_cnt=10 --output_file={op_example_inputs_file}"
-        )
+        generate_op_example_inputs_cmd = f"ATHENA_WHILE_LOOP_LIMIT=8 {sys.executable} {tmp_output_filepath} --max_try_cnt=10 --output_file={op_example_inputs_file}"
+        System(generate_op_example_inputs_cmd)
 
 
 def GetOutputSampleStrings(
@@ -416,11 +415,9 @@ def AllInputOutputTypesSupported(ir_program_or_block):
 
 
 def System(cmd):
-    print(cmd, file=sys.stderr)
+    print(f"Run system command: {cmd}", flush=True)
     ret = os.system(cmd)
-    if ret != 0:
-        sys.exit(ret)
-        return
+    assert ret == 0, f"Run system command failed!\n  Detail command: {cmd}"
 
 
 if __name__ == "__main__":
