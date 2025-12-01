@@ -52,6 +52,11 @@ flags.DEFINE_string(
     "a comma-separated string of integer list to specify the split positions.",
 )
 flags.DEFINE_boolean(
+    "group_head_and_tail",
+    True,
+    "Whether extend split_positions to include the head and tail of the statement sequence.",
+)
+flags.DEFINE_boolean(
     "eval_mode",
     False,
     "Generate graphnet sample for eval, which only keep output tensors with maximum depth (longest chain).",
@@ -75,6 +80,7 @@ def RunGeneration(
     example_inputs,
     op_example_inputs,
     split_positions,
+    group_head_and_tail,
     eval_mode,
     tmp_dir=None,
 ):
@@ -93,6 +99,7 @@ def RunGeneration(
             example_inputs,
             op_example_inputs,
             split_positions,
+            group_head_and_tail,
             eval_mode,
             tmp_dir,
         )
@@ -122,6 +129,7 @@ def main(argv):
         example_inputs=FLAGS.example_inputs,
         op_example_inputs=FLAGS.op_example_inputs,
         split_positions=split_positions,
+        group_head_and_tail=FLAGS.group_head_and_tail,
         eval_mode=FLAGS.eval_mode,
         tmp_dir=FLAGS.tmp_dir,
     )
@@ -245,9 +253,8 @@ def GenerateOpExampleInputFile(
         WriteToFile(tmp_output_filepath, unittest)
 
         # Execute the generated tmp file
-        System(
-            f"ATHENA_WHILE_LOOP_LIMIT=8 {sys.executable} {tmp_output_filepath} --max_try_cnt=10 --output_file={op_example_inputs_file}"
-        )
+        generate_op_example_inputs_cmd = f"ATHENA_WHILE_LOOP_LIMIT=8 {sys.executable} {tmp_output_filepath} --max_try_cnt=10 --output_file={op_example_inputs_file}"
+        System(generate_op_example_inputs_cmd)
 
 
 def GetOutputSampleStrings(
@@ -255,7 +262,8 @@ def GetOutputSampleStrings(
     example_inputs_file,
     op_example_inputs_file,
     split_positions,
-    eval_mode,
+    group_head_and_tail=True,
+    eval_mode=True,
     tmp_dir=None,
 ):
     def MakeModuleOpSampleGenerator(ir_program, example_inputs_meta_getter):
@@ -314,8 +322,8 @@ def GetOutputSampleStrings(
         generated_sample_strs = set()
         subgraph_idx = 0
         for program_id, seq_stmts in program_seq_stmts_list:
-            split_positions_for_seq_stmts = ExtendStartAndEnd(
-                seq_stmts, split_positions
+            split_positions_for_seq_stmts = ExtendHeadAndTail(
+                seq_stmts, split_positions, group_head_and_tail
             )
             for i in range(len(split_positions_for_seq_stmts) - 1):
                 seq_stmts_slice = seq_stmts[
@@ -333,12 +341,16 @@ def GetOutputSampleStrings(
             subgraph_idx += 1
 
 
-def ExtendStartAndEnd(seq_stmts, split_positions):
-    split_positions_for_seq_stmts = [0] + [
-        v for v in split_positions if v < len(seq_stmts)
+def ExtendHeadAndTail(seq_stmts, split_positions, group_head_and_tail):
+    split_positions_for_seq_stmts = (
+        [0, *split_positions, len(seq_stmts)]
+        if group_head_and_tail
+        else split_positions
+    )
+    split_positions_for_seq_stmts = [
+        x for x in split_positions_for_seq_stmts if x <= len(seq_stmts)
     ]
-    if split_positions_for_seq_stmts[-1] < len(seq_stmts):
-        split_positions_for_seq_stmts.append(len(seq_stmts))
+    split_positions_for_seq_stmts = list(dict.fromkeys(split_positions_for_seq_stmts))
     print(f"split_positions_for_seq_stmts: {split_positions_for_seq_stmts}")
     return split_positions_for_seq_stmts
 
@@ -403,11 +415,9 @@ def AllInputOutputTypesSupported(ir_program_or_block):
 
 
 def System(cmd):
-    print(cmd, file=sys.stderr)
+    print(f"Run system command: {cmd}", flush=True)
     ret = os.system(cmd)
-    if ret != 0:
-        sys.exit(ret)
-        return
+    assert ret == 0, f"Run system command failed!\n  Detail command: {cmd}"
 
 
 if __name__ == "__main__":

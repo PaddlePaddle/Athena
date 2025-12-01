@@ -68,7 +68,7 @@ def InitTensorMeta(tensor, meta_name):
     if isinstance(tensor, list) and len(tensor) > 0 and isinstance(tensor[0], int):
         return None
     if isinstance(tensor, list):
-        return [InitTensorMema(t, meta_name) for t in tensor]
+        return [InitTensorMeta(t, meta_name) for t in tensor]
     if not hasattr(tensor, meta_name):
         raise NotImplementedError(f"type(tensor): {type(tensor)}, meta_name: {meta_name}")
     if tensor.dtype in [paddle.float16, paddle.bfloat16]:
@@ -264,11 +264,11 @@ def InferAndSaveOpInputDims(argv):
     SetSeed(FLAGS.random_seed)
 
     global exitcode
-    print("start InferAndSaveOpInputDims", file=sys.stderr)
+    print("start InferAndSaveOpInputDims", flush=True)
 {%- for program_id, blocks in programs %}
 {% set program_idx = loop.index0 %}
     try:
-        print(datetime.datetime.now(), "InferAndSaveOpInputDims... ( {{program_idx}} / {{programs | length}} )", file=sys.stderr)
+        print(datetime.datetime.now(), "InferAndSaveOpInputDims... ( {{program_idx}} / {{programs | length}} )", flush=True)
         InferAndSaveOpInputDims_Program{{program_id}}()
     except Exception as e:
         exitcode = 1
