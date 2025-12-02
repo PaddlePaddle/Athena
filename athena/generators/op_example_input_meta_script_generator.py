@@ -44,7 +44,7 @@ class ProgramBlocksDescriptorGenerator:
         self.block_name_gen = BlockNameGenerator()
         self.unittest_stmts_gen = PaddleBlockUnittestStmtsGenerator(self.block_name_gen)
 
-    def Generate(self):
+    def Generate(self, eval_mode):
         def GetShapeInstance(tensor):
             if tensor.arg_name_as_input is not None:
                 tensor_meta = self.example_inputs_meta_getter.Get(
@@ -97,7 +97,7 @@ class ProgramBlocksDescriptorGenerator:
                 input_local_tensors,
                 stmts,
                 output_local_tensors,
-            ) = self.unittest_stmts_gen.Generate(block)
+            ) = self.unittest_stmts_gen.Generate(block, eval_mode)
             input_local_tensors = [
                 ConvertToPaddleTensor(t) for t in input_local_tensors
             ]
@@ -144,12 +144,12 @@ class OpExampleInputMetaScriptGenerator:
         self.name = "_".join(type(ir_program).__name__ for ir_program in ir_programs)
         self.example_inputs_meta_getter = example_inputs_meta_getter
 
-    def Generate(self):
+    def Generate(self, eval_mode):
         def MakeProgramBlocksDescriptor(ir_program):
             generator = ProgramBlocksDescriptorGenerator(
                 ir_program, self.example_inputs_meta_getter
             )
-            return generator.Generate()
+            return generator.Generate(eval_mode)
 
         programs = [
             MakeProgramBlocksDescriptor(ir_program) for ir_program in self.ir_programs

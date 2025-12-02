@@ -11,6 +11,7 @@ class InputOutputTensorsExtractor:
         self.invalid_outputs_for_eval = {}
 
     def Extract(self, free_vars, args, eval_mode=False):
+        print(f"- [InputOutputTensorsExtractor.Extract] eval_mode: {eval_mode}")
         self.input_tensors += list(free_vars)
         self.input_tensors += list(args)
         self.block_func(self, *free_vars)(*args)
@@ -33,9 +34,9 @@ class InputOutputTensorsExtractor:
                 tensor for tensor in self.output_tensors if tensor.name not in ancestors
             ]
 
-        # print(
-        #     f"Totally {len(self.input_tensors)} input tensors, {len(self.output_tensors)} output tensors."
-        # )
+        print(
+            f"Totally {len(self.input_tensors)} input tensors, {len(self.output_tensors)} output tensors."
+        )
         return self.input_tensors, self.output_tensors
 
     def pd_op_data(self, op):

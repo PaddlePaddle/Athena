@@ -82,7 +82,7 @@ class PaddleFuncBodyGenerator:
             return self.tensor_converter.ConvertToLocalTensor(tensor).name
 
         self.op_id2used_by_me_and_downstream = GetOpId2TensorNamesUsedByMeAndDownstream(
-            self.func, free_vars, args, get_local_name
+            self.func, free_vars, args, get_local_name, eval_mode
         )
         self.op_id2op_func_in_out_names_signature = GetOpId2OpPipeInOutNamesSignature(
             self.op_id2used_by_me_and_downstream,
@@ -90,6 +90,7 @@ class PaddleFuncBodyGenerator:
             free_vars,
             args,
             get_local_name,
+            eval_mode,
         )
         self.block_op_calls = BlockOpCallsExtractor().Extract(
             self.func, free_vars, args
@@ -98,6 +99,9 @@ class PaddleFuncBodyGenerator:
             self.body_op_id2op_index[op_call.op.op_id] = index
         for op_call in self.block_op_calls.body_op_calls:
             self(op_call.op, *op_call.input_tensors, **op_call.kwargs)
+        print(
+            f"- [PaddleFuncBodyGenerator.Generate] len(input_local_tensors): {len(input_local_tensors)}, len(self.output_local_tensors): {len(self.output_local_tensors)}"
+        )
         return input_local_tensors, self.stmts, self.output_local_tensors
 
     def GetTensorNamesUsedByDownstream(self, op_id):
