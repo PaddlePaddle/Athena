@@ -91,11 +91,17 @@ class GraphnetSequenceSampleGenerator:
 
     def GetOutputTensorNames(self, seq_stmts):
         tensors_used_by_downstream = set(seq_stmts[-1].tensors_used_by_downstream)
+        tensor_names_to_remove = set()
+        for stmt in seq_stmts:
+            if stmt.op_name in ["pd_op.full_int_array", "pd_op.full"]:
+                tensor_names_to_remove.update(stmt.output_tensor_names)
+
         return [
             tensor_name
             for stmt in seq_stmts
             for tensor_name in stmt.output_tensor_names
             if tensor_name in tensors_used_by_downstream
+            if tensor_name not in tensor_names_to_remove
         ]
 
     def MakeImmediateValue4OperandId(

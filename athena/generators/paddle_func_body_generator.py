@@ -99,9 +99,6 @@ class PaddleFuncBodyGenerator:
             self.body_op_id2op_index[op_call.op.op_id] = index
         for op_call in self.block_op_calls.body_op_calls:
             self(op_call.op, *op_call.input_tensors, **op_call.kwargs)
-        print(
-            f"- [PaddleFuncBodyGenerator.Generate] len(input_local_tensors): {len(input_local_tensors)}, len(self.output_local_tensors): {len(self.output_local_tensors)}"
-        )
         return input_local_tensors, self.stmts, self.output_local_tensors
 
     def GetTensorNamesUsedByDownstream(self, op_id):
