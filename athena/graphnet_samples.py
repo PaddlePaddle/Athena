@@ -348,7 +348,7 @@ def ExtendHeadAndTail(seq_stmts, split_positions, group_head_and_tail):
         else split_positions
     )
     split_positions_for_seq_stmts = [
-        x for x in split_positions_for_seq_stmts if x <= len(seq_stmts)
+        min(x, len(seq_stmts)) for x in split_positions_for_seq_stmts
     ]
     split_positions_for_seq_stmts = list(dict.fromkeys(split_positions_for_seq_stmts))
     print(f"split_positions_for_seq_stmts: {split_positions_for_seq_stmts}")
