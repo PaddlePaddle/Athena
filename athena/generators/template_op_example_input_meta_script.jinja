@@ -71,12 +71,16 @@ def InitTensorMeta(tensor, meta_name):
         return [InitTensorMeta(t, meta_name) for t in tensor]
     if not hasattr(tensor, meta_name):
         raise NotImplementedError(f"type(tensor): {type(tensor)}, meta_name: {meta_name}")
+    kLimit = 64
+    if tensor.numel().item() <= kLimit:
+        return None
     if tensor.dtype in [paddle.float16, paddle.bfloat16]:
         return float(CalculateTensorMeta(tensor.cast("float32"), meta_name))
     elif tensor.dtype in [paddle.float32, paddle.float64]:
         return float(CalculateTensorMeta(tensor, meta_name))
     else:
-        return CalculateTensorMeta(tensor, meta_name) if meta_name in ["max", "min"] else None
+        tensor_copy = tensor.cast("int32") if tensor.dtype != paddle.int64 else tensor
+        return CalculateTensorMeta(tensor_copy, meta_name) if meta_name in ["max", "min"] else None
 
 
 def InitTensorData(tensor):
@@ -89,7 +93,7 @@ def InitTensorData(tensor):
     if not hasattr(tensor, 'numel'):
         raise NotImplementedError(f"type(tensor): {type(tensor)}")
     kLimit = 64
-    if tensor.numel().item() >= kLimit:
+    if tensor.numel().item() > kLimit:
         return None
     if not hasattr(tensor, 'numpy'):
         raise NotImplementedError(f"type(tensor): {type(tensor)}")
@@ -127,7 +131,7 @@ class PirProgram_op_input_tensor_meta_{random.randint(0, sys.maxsize)}:
 
 def AppendRecordClassToOutputFile(content):
     with open(FLAGS.output_file, 'a') as f:
-            f.write(content)
+        f.write(content)
 
 {% macro get_input_shape_instance(block, block_idx, input_idx) -%}
     {{block.input_tensor_descs[input_idx].shape}}
@@ -149,7 +153,7 @@ def AppendRecordClassToOutputFile(content):
 {%- elif big_dtype == "int64" -%}
     InitIntegerTensor(shape={{shape}}, dtype='{{dtype}}', min_val={{min}}, max_val={{max}})
 {%- elif big_dtype == "float64" -%}
-    InitFloatTensor(shape={{shape}}, dtype='{{dtype}}', mean={{mean}}, std={{std}}, min_val={{min}}, max_val={{max}})
+    InitFloatTensor(shape={{shape}}, dtype='{{dtype}}', mean={{MetaValueToString(mean)}}, std={{MetaValueToString(std)}}, min_val={{MetaValueToString(min)}}, max_val={{MetaValueToString(max)}})
 {%- endif -%}
 {%- endmacro -%}
 
