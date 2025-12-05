@@ -68,13 +68,16 @@ flags.DEFINE_string("tmp_dir", tempfile.gettempdir(), "tmp directory.")
 class GraphnetSample:
     unique_name: str
     subgraph_idx: int
+    program_id: int
     metadata: Dict[str, str]
     input_meta: str
     weight_meta: str
     model: str
 
 
-def ConvertOutputStringToSample(model_name, unique_name, subgraph_idx, sample_str):
+def ConvertOutputStringToSample(
+    model_name, unique_name, subgraph_idx, program_id, sample_str
+):
     metadata = {
         "framework": "paddle",
         "model_name": model_name,
@@ -86,6 +89,7 @@ def ConvertOutputStringToSample(model_name, unique_name, subgraph_idx, sample_st
     sample = GraphnetSample(
         unique_name=unique_name,
         subgraph_idx=subgraph_idx,
+        program_id=program_id,
         metadata=metadata,
         input_meta=input_meta.strip("\n\n\n") + "\n",
         weight_meta=weight_meta.rstrip("\n\n\n") + "\n",
@@ -108,16 +112,16 @@ def RunGeneration(
     graphnet_sample_results = []
     seg_counter = defaultdict(lambda: itertools.count())
     if not split_positions:
-        for module_id, (subgraph_idx, uid, sample_str) in enumerate(
+        for _, (subgraph_idx, program_id, uid, sample_str) in enumerate(
             GetModuleOpOutputSampleStrings(ir_programs, example_inputs, eval_mode)
         ):
             unique_name = f"{uid}_{next(seg_counter[uid])}"
             sample = ConvertOutputStringToSample(
-                model_name, unique_name, subgraph_idx, sample_str
+                model_name, unique_name, subgraph_idx, program_id, sample_str
             )
             graphnet_sample_results.append(sample)
     else:
-        for module_id, (subgraph_idx, uid, sample_str) in enumerate(
+        for _, (subgraph_idx, program_id, uid, sample_str) in enumerate(
             GetSequenceOutputSampleStrings(
                 ir_programs,
                 example_inputs,
@@ -130,7 +134,7 @@ def RunGeneration(
         ):
             unique_name = f"{uid}_{next(seg_counter[uid])}"
             sample = ConvertOutputStringToSample(
-                model_name, unique_name, subgraph_idx, sample_str
+                model_name, unique_name, subgraph_idx, program_id, sample_str
             )
             graphnet_sample_results.append(sample)
     print(f"Generate {len(graphnet_sample_results)} graphnet samples.")
@@ -157,9 +161,10 @@ def main(argv):
             subgraph_idx2samples[sample.subgraph_idx] = []
         subgraph_idx2samples[sample.subgraph_idx].append(sample)
 
+    program_id2subgraph_path = {}
     num_samples = len(graphnet_sample_results)
     for subgraph_idx, samples in subgraph_idx2samples.items():
-        for sample_idx in range(len(samples)):
+        for sample_idx, sample in enumerate(samples):
             if num_samples == 1 and len(samples) == 1:
                 subgraph_path = FLAGS.output_dir
             elif len(samples) == 1:
@@ -170,17 +175,19 @@ def main(argv):
                 subgraph_path = os.path.join(
                     FLAGS.output_dir, f"subgraph_{subgraph_idx}_{sample_idx}"
                 )
+            program_id2subgraph_path[sample.program_id] = subgraph_path
             if not os.path.exists(subgraph_path):
                 os.makedirs(subgraph_path)
-            WriteToFile(f"{subgraph_path}/model.py", samples[sample_idx].model)
-            WriteToFile(
-                f"{subgraph_path}/weight_meta.py", samples[sample_idx].weight_meta
-            )
-            WriteToFile(
-                f"{subgraph_path}/input_meta.py", samples[sample_idx].input_meta
-            )
+            WriteToFile(f"{subgraph_path}/model.py", sample.model)
+            WriteToFile(f"{subgraph_path}/weight_meta.py", sample.weight_meta)
+            WriteToFile(f"{subgraph_path}/input_meta.py", sample.input_meta)
             with open(os.path.join(subgraph_path, "graph_net.json"), "w") as f:
-                json.dump(samples[sample_idx].metadata, f, indent=4)
+                json.dump(sample.metadata, f, indent=4)
+    program_ids_content = [f"{k}: {v}" for k, v in program_id2subgraph_path.items()]
+    WriteToFile(
+        os.path.join(FLAGS.output_dir, "program_ids.txt"),
+        "\n".join(program_ids_content),
+    )
 
 
 def GetSha256sum(content):
@@ -292,11 +299,12 @@ def GetModuleOpOutputSampleStrings(
     )
 
     for subgraph_idx, ir_program in enumerate(ir_programs):
+        program_id = GetProgramId(ir_program)
         op_names = GetOpNames(ir_program)
         program_hash = GetOpNamesHash(op_names)
         generator = MakeModuleOpSampleGenerator(ir_program, example_inputs_meta_getter)
         sample_str = generator.Generate()
-        yield (subgraph_idx, program_hash, sample_str)
+        yield (subgraph_idx, program_id, program_hash, sample_str)
 
 
 def GetSequenceOutputSampleStrings(
@@ -359,7 +367,7 @@ def GetSequenceOutputSampleStrings(
             if sample_str not in generated_sample_strs:
                 generated_sample_strs.add(sample_str)
                 stmt_hash = GetSeqStmtsHash(seq_stmts_slice)
-                yield (subgraph_idx, stmt_hash, sample_str)
+                yield (subgraph_idx, program_id, stmt_hash, sample_str)
 
 
 def ExtendHeadAndTail(seq_stmts, split_positions, group_head_and_tail):

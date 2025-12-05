@@ -55,6 +55,9 @@ class GraphnetSequenceSampleGenerator:
                 op_id2seq_stmt
             ),
             tensor_name4tensor_id=self.MakeTensorName4TensorId(op_id2seq_stmt),
+            tensor_original_name4tensor_id=self.MakeTensorOriginalName4TensorId(
+                op_id2seq_stmt
+            ),
             tensor_name4operand_id=self.MakeTensorName4OperandId(op_id2seq_stmt),
             input_spec_shape_dtype4tensor_id=self.MakeInputSpecShapeAndDtype4TensorId(
                 op_id2seq_stmt,
@@ -342,6 +345,17 @@ class GraphnetSequenceSampleGenerator:
             return tensor_id.get_source_name(GetSourceNames)
 
         return TensorName4TensorId
+
+    def MakeTensorOriginalName4TensorId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
+        def GetSourceNames(op_id):
+            return op_id2seq_stmt[op_id].input_tensor_original_names
+
+        def TensorOriginalName4TensorId(tensor_id):
+            return tensor_id.get_source_name(GetSourceNames)
+
+        return TensorOriginalName4TensorId
 
     def MakeTensorListMemberIds4OperandId(
         self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]

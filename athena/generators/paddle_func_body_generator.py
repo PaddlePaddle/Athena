@@ -27,6 +27,7 @@ class PyCodeStmt:
     op_unique_local_name: str
     pycode: List[IndentedPyCode]
     input_tensor_names: List[str]
+    input_tensor_original_names: List[str]
     output_tensor_names: List[str]
     inputs_type_strs: List[str]
     outputs_type_strs: List[str]
@@ -246,6 +247,9 @@ class PaddleFuncBodyGenerator:
         def GetTensorName(tensor):
             return tensor.name if tensor is not None else "None"
 
+        def GetTensorOriginalName(tensor):
+            return tensor.arg_name_as_input if tensor is not None else "None"
+
         self.stmts.append(
             PyCodeStmt(
                 op=op,
@@ -254,6 +258,9 @@ class PaddleFuncBodyGenerator:
                     prefix=f"op_{op.GetNameSuffix()}",
                 ),
                 input_tensor_names=[GetTensorName(t) for t in input_local_tensors],
+                input_tensor_original_names=[
+                    GetTensorOriginalName(t) for t in input_local_tensors
+                ],
                 output_tensor_names=local_output_tensor_names,
                 inputs_type_strs=inputs_type_strs,
                 outputs_type_strs=outputs_type_strs,

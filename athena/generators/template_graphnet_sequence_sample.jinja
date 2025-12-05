@@ -75,6 +75,7 @@
 {%- set shape, dtype = sig.input_spec_shape_dtype4tensor_id(tensor_id) %}
 class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
     name = "{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}"
+    original_name = "{{tensor_name_converter(sig.tensor_original_name4tensor_id(tensor_id))}}"
     {{get_input_tensor_instance(example_tensor_meta)}}
 {{ '\n' }}
 {%- endif %}
@@ -97,6 +98,7 @@ class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
 {%- set shape, dtype = sig.input_spec_shape_dtype4tensor_id(tensor_id) %}
 class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
     name = "{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}"
+    original_name = "{{tensor_name_converter(sig.tensor_original_name4tensor_id(tensor_id))}}"
     {{get_input_tensor_instance(example_tensor_meta)}}
 {%- endfor %}
 

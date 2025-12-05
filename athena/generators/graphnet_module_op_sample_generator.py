@@ -16,6 +16,7 @@ BlockDescriptor = namedtuple(
         "is_entry_block",
         "block_name",
         "input_arg_names",
+        "input_original_names",
         "input_tensor_descs",
         "stmts",
         "output_arg_names",
@@ -122,6 +123,9 @@ class GraphnetModuleOpSampleGenerator:
                     block.owner_op, block.region_idx, block.block_idx
                 ),
                 input_arg_names=[tensor.name for tensor in input_local_tensors],
+                input_original_names=[
+                    tensor.arg_name_as_input for tensor in input_local_tensors
+                ],
                 input_tensor_descs=[GetInputTensorDesc(t) for t in input_local_tensors],
                 stmts=stmts,
                 output_arg_names=[tensor.name for tensor in output_local_tensors],
