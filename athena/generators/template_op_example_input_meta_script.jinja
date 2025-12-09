@@ -6,6 +6,7 @@ from absl import app
 from absl import flags
 import traceback
 import datetime
+from scipy.stats import truncnorm
 from typing import Union, List
 from dataclasses import dataclass
 
@@ -41,10 +42,11 @@ def InitIntegerTensor(shape, dtype, min_val, max_val):
 
 
 def InitFloatTensor(shape, dtype, mean, std, min_val, max_val):
-    if mean is not None and std is not None:
-        # NumPy does not support truncated normal, we simulate it here.
-        array = np.random.normal(0, 1, shape) * std * 0.2 + mean
-        array = np.clip(array, min_val, max_val)
+    if mean is not None and std is not None and std >= 1e-5:
+        # truncated normal
+        a = (min_val - mean) / std
+        b = (max_val - mean) / std
+        array = truncnorm.rvs(a, b, loc=mean, scale=std, size=shape)
     else:
         array = np.random.uniform(low=min_val, high=max_val, size=shape)
     return paddle.to_tensor(array).cast(dtype)
