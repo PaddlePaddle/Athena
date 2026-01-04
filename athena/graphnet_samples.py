@@ -99,6 +99,198 @@ def ConvertOutputStringToSample(
     return sample
 
 
+class GraphGenerator:
+    def __init__(self, model_name, programs_file, example_inputs_file, eval_mode=True):
+        self.model_name = model_name
+        self.programs_file = programs_file
+        self.example_inputs_file = example_inputs_file
+        self.eval_mode = eval_mode
+
+        self.example_inputs_meta_getter = MakeExampleInputsMetaGetter(
+            GetClasses(example_inputs_file)
+        )
+        self.ir_programs = GetValidIrPrograms(programs_file)
+
+    def GetOutputSampleStrings(self):
+        def MakeModuleOpSampleGenerator(ir_program, example_inputs_meta_getter):
+            return GraphnetModuleOpSampleGenerator(
+                ir_program,
+                example_inputs_meta_getter,
+                eval_mode=self.eval_mode,
+            )
+
+        for subgraph_idx, ir_program in enumerate(self.ir_programs):
+            program_id = GetProgramId(ir_program)
+            op_names = GetOpNames(ir_program)
+            program_hash = GetOpNamesHash(op_names)
+            generator = MakeModuleOpSampleGenerator(
+                ir_program, self.example_inputs_meta_getter
+            )
+            sample_str = generator.Generate()
+            yield (subgraph_idx, program_id, program_hash, sample_str)
+
+    def __call__(self):
+        graphnet_sample_results = []
+        seg_counter = defaultdict(lambda: itertools.count())
+        for _, (subgraph_idx, program_id, uid, sample_str) in enumerate(
+            self.GetOutputSampleStrings()
+        ):
+            unique_name = f"{uid}_{next(seg_counter[uid])}"
+            sample = ConvertOutputStringToSample(
+                self.model_name, unique_name, subgraph_idx, program_id, sample_str
+            )
+            graphnet_sample_results.append(sample)
+        print(
+            f"[GraphGenerator] Generate {len(graphnet_sample_results)} graphnet samples."
+        )
+        return graphnet_sample_results
+
+
+class SubgraphGenerator:
+    def __init__(
+        self,
+        model_name,
+        programs_file,
+        example_inputs_file,
+        op_example_inputs_file,
+        eval_mode,
+        tmp_dir,
+    ):
+        self.model_name = model_name
+        self.programs_file = programs_file
+        self.example_inputs_file = example_inputs_file
+        self.eval_mode = eval_mode
+
+        if tmp_dir:
+            self.GenerateOpExampleInputFile(op_example_inputs_file, tmp_dir)
+        else:
+            with tempfile.TemporaryDirectory(prefix="athena_op_example_") as tmp_dir:
+                self.GenerateOpExampleInputFile(op_example_inputs_file, tmp_dir)
+        self.op_example_inputs_meta_getter = MakeOpExampleInputsMetaGetter(
+            GetClasses(op_example_inputs_file)
+        )
+
+        self.ir_programs = GetValidIrPrograms(self.programs_file)
+        self.program_seq_stmts_list = self.ConvertToSequenceStmts()
+
+    def GenerateOpExampleInputFile(self, op_example_inputs_file, tmp_dir):
+        if os.path.isfile(op_example_inputs_file):
+            print(f"Remove the existing {op_example_inputs_file}")
+            os.remove(op_example_inputs_file)
+
+        assert os.path.isdir(tmp_dir), f"Directory {tmp_dir=} does not exist."
+
+        print(f"Generate {op_example_inputs_file} ...")
+        tmp_output_file_prefix = "tmp_op_example_input_"
+        for name, unittest in GetOpExampleInputMetaUnittests(
+            self.programs_file,
+            self.example_inputs_file,
+            bucket_size=128,
+            eval_mode=self.eval_mode,
+        ):
+            sha256sum = GetSha256sum(unittest)
+            tmp_output_filepath = os.path.join(
+                tmp_dir, f"{tmp_output_file_prefix}{sha256sum[0:32]}.py"
+            )
+            WriteToFile(tmp_output_filepath, unittest)
+
+            # Execute the generated tmp file
+            generate_op_example_inputs_cmd = f"ATHENA_WHILE_LOOP_LIMIT=8 {sys.executable} {tmp_output_filepath} --max_try_cnt=10 --output_file={op_example_inputs_file}"
+            System(generate_op_example_inputs_cmd)
+
+    def ExtractSeqStmts(self, stmts, program_id, op_example_inputs_meta_getter):
+        def IsValidPrimitive(stmt):
+            return op_example_inputs_meta_getter.HasAllInputs(
+                program_id, stmt.op
+            ) and IsPrimitive(stmt)
+
+        yield from (
+            seq_stmts
+            for is_primitive, stmt_group in groupby(stmts, key=IsValidPrimitive)
+            if is_primitive
+            for seq_stmts in [list(stmt_group)]
+        )
+
+    def ConvertToSequenceStmts(self):
+        unittest_stmts_gen = PaddleBlockUnittestStmtsGenerator(BlockNameGenerator())
+        program_seq_stmts_list = [
+            (program_id, seq_stmts)
+            for ir_program in self.ir_programs
+            for program_id in [GetProgramId(ir_program)]
+            for block in BlocksGenerator(ir_program).Generate()
+            if AllInputOutputTypesSupported(block)
+            for _, stmts, _ in [unittest_stmts_gen.Generate(block, self.eval_mode)]
+            for seq_stmts in self.ExtractSeqStmts(
+                stmts, program_id, self.op_example_inputs_meta_getter
+            )
+            if len(seq_stmts) > 1
+            if self.op_example_inputs_meta_getter.HasAllInputs(
+                program_id, seq_stmts[0].op
+            )
+        ]
+        return program_seq_stmts_list
+
+    def ExtendHeadAndTail(self, seq_stmts, split_positions, group_head_and_tail):
+        split_positions_for_seq_stmts = (
+            [0, *split_positions, len(seq_stmts)]
+            if group_head_and_tail
+            else split_positions
+        )
+        split_positions_for_seq_stmts = [
+            min(x, len(seq_stmts)) for x in split_positions_for_seq_stmts
+        ]
+        split_positions_for_seq_stmts = list(sorted(set(split_positions_for_seq_stmts)))
+        print(f"split_positions_for_seq_stmts: {split_positions_for_seq_stmts}")
+        return split_positions_for_seq_stmts
+
+    def GetOutputSampleStrings(self, split_positions, group_head_and_tail=True):
+        def MakeSequenceSampleGenerator(
+            program_id, seq_stmts, op_example_inputs_meta_getter
+        ):
+            generator = GraphnetSequenceSampleGenerator(
+                program_id, op_example_inputs_meta_getter
+            )
+            return generator.Generate(seq_stmts)
+
+        print(f"origin split_positions: {split_positions}")
+        generated_sample_strs = set()
+        for subgraph_idx, (program_id, seq_stmts) in enumerate(
+            self.program_seq_stmts_list
+        ):
+            split_positions_for_seq_stmts = self.ExtendHeadAndTail(
+                seq_stmts, split_positions, group_head_and_tail
+            )
+            for i in range(len(split_positions_for_seq_stmts) - 1):
+                seq_stmts_slice = seq_stmts[
+                    split_positions_for_seq_stmts[i] : split_positions_for_seq_stmts[
+                        i + 1
+                    ]
+                ]
+                sample_str = MakeSequenceSampleGenerator(
+                    program_id, seq_stmts_slice, self.op_example_inputs_meta_getter
+                )
+                if sample_str not in generated_sample_strs:
+                    generated_sample_strs.add(sample_str)
+                    stmt_hash = GetSeqStmtsHash(seq_stmts_slice)
+                    yield (subgraph_idx, program_id, stmt_hash, sample_str)
+
+    def __call__(self, split_positions, group_head_and_tail=True):
+        graphnet_sample_results = []
+        seg_counter = defaultdict(lambda: itertools.count())
+        for _, (subgraph_idx, program_id, uid, sample_str) in enumerate(
+            self.GetOutputSampleStrings(split_positions, group_head_and_tail)
+        ):
+            unique_name = f"{uid}_{next(seg_counter[uid])}"
+            sample = ConvertOutputStringToSample(
+                self.model_name, unique_name, subgraph_idx, program_id, sample_str
+            )
+            graphnet_sample_results.append(sample)
+        print(
+            f"[SubgraphGenerator] Generate {len(graphnet_sample_results)} graphnet subgraph samples ({split_positions=}, {group_head_and_tail=})."
+        )
+        return graphnet_sample_results
+
+
 def RunGeneration(
     model_name,
     ir_programs,
@@ -109,35 +301,19 @@ def RunGeneration(
     eval_mode,
     tmp_dir=None,
 ):
-    graphnet_sample_results = []
-    seg_counter = defaultdict(lambda: itertools.count())
     if not split_positions:
-        for _, (subgraph_idx, program_id, uid, sample_str) in enumerate(
-            GetModuleOpOutputSampleStrings(ir_programs, example_inputs, eval_mode)
-        ):
-            unique_name = f"{uid}_{next(seg_counter[uid])}"
-            sample = ConvertOutputStringToSample(
-                model_name, unique_name, subgraph_idx, program_id, sample_str
-            )
-            graphnet_sample_results.append(sample)
+        generator = GraphGenerator(model_name, ir_programs, example_inputs, eval_mode)
+        graphnet_sample_results = generator()
     else:
-        for _, (subgraph_idx, program_id, uid, sample_str) in enumerate(
-            GetSequenceOutputSampleStrings(
-                ir_programs,
-                example_inputs,
-                op_example_inputs,
-                split_positions,
-                group_head_and_tail,
-                eval_mode,
-                tmp_dir,
-            )
-        ):
-            unique_name = f"{uid}_{next(seg_counter[uid])}"
-            sample = ConvertOutputStringToSample(
-                model_name, unique_name, subgraph_idx, program_id, sample_str
-            )
-            graphnet_sample_results.append(sample)
-    print(f"Generate {len(graphnet_sample_results)} graphnet samples.")
+        generator = SubgraphGenerator(
+            model_name,
+            ir_programs,
+            example_inputs,
+            op_example_inputs,
+            eval_mode,
+            tmp_dir,
+        )
+        graphnet_sample_results = generator(split_positions, group_head_and_tail)
     return graphnet_sample_results
 
 
@@ -152,7 +328,6 @@ def main(argv):
         split_positions=split_positions,
         group_head_and_tail=FLAGS.group_head_and_tail,
         eval_mode=FLAGS.eval_mode,
-        tmp_dir=FLAGS.tmp_dir,
     )
 
     subgraph_idx2samples = {}
@@ -255,135 +430,6 @@ def GetValidIrPrograms(programs_file):
     return ir_programs
 
 
-def GenerateOpExampleInputFile(
-    programs_file, example_inputs_file, op_example_inputs_file, eval_mode, tmp_dir
-):
-    if os.path.isfile(op_example_inputs_file):
-        print(f"Remove the existing {op_example_inputs_file}")
-        os.remove(op_example_inputs_file)
-
-    if tmp_dir is None:
-        tmp_dir = tempfile.gettempdir()
-
-    print(f"Generate {op_example_inputs_file} ...")
-    tmp_output_file_prefix = "tmp_op_example_input_"
-    for name, unittest in GetOpExampleInputMetaUnittests(
-        programs_file, example_inputs_file, bucket_size=128, eval_mode=eval_mode
-    ):
-        sha256sum = GetSha256sum(unittest)
-        tmp_output_filepath = os.path.join(
-            tmp_dir, f"{tmp_output_file_prefix}{sha256sum[0:32]}.py"
-        )
-        WriteToFile(tmp_output_filepath, unittest)
-
-        # Execute the generated tmp file
-        generate_op_example_inputs_cmd = f"ATHENA_WHILE_LOOP_LIMIT=8 {sys.executable} {tmp_output_filepath} --max_try_cnt=10 --output_file={op_example_inputs_file}"
-        System(generate_op_example_inputs_cmd)
-
-
-def GetModuleOpOutputSampleStrings(
-    programs_file,
-    example_inputs_file,
-    eval_mode=True,
-):
-    def MakeModuleOpSampleGenerator(ir_program, example_inputs_meta_getter):
-        return GraphnetModuleOpSampleGenerator(
-            ir_program,
-            example_inputs_meta_getter,
-            eval_mode=eval_mode,
-        )
-
-    ir_programs = GetValidIrPrograms(programs_file)
-    example_inputs_meta_getter = MakeExampleInputsMetaGetter(
-        GetClasses(example_inputs_file)
-    )
-
-    for subgraph_idx, ir_program in enumerate(ir_programs):
-        program_id = GetProgramId(ir_program)
-        op_names = GetOpNames(ir_program)
-        program_hash = GetOpNamesHash(op_names)
-        generator = MakeModuleOpSampleGenerator(ir_program, example_inputs_meta_getter)
-        sample_str = generator.Generate()
-        yield (subgraph_idx, program_id, program_hash, sample_str)
-
-
-def GetSequenceOutputSampleStrings(
-    programs_file,
-    example_inputs_file,
-    op_example_inputs_file,
-    split_positions,
-    group_head_and_tail=True,
-    eval_mode=True,
-    tmp_dir=None,
-):
-    def MakeSequenceSampleGenerator(
-        program_id, seq_stmts, op_example_inputs_meta_getter
-    ):
-        generator = GraphnetSequenceSampleGenerator(
-            program_id, op_example_inputs_meta_getter
-        )
-        return generator.Generate(seq_stmts)
-
-    ir_programs = GetValidIrPrograms(programs_file)
-
-    print(f"origin split_positions: {split_positions}")
-    GenerateOpExampleInputFile(
-        programs_file,
-        example_inputs_file,
-        op_example_inputs_file,
-        eval_mode,
-        tmp_dir,
-    )
-    op_example_inputs_meta_getter = MakeOpExampleInputsMetaGetter(
-        GetClasses(op_example_inputs_file)
-    )
-    unittest_stmts_gen = PaddleBlockUnittestStmtsGenerator(BlockNameGenerator())
-    program_seq_stmts_list = [
-        (program_id, seq_stmts)
-        for ir_program in ir_programs
-        for program_id in [GetProgramId(ir_program)]
-        for block in BlocksGenerator(ir_program).Generate()
-        if AllInputOutputTypesSupported(block)
-        for _, stmts, _ in [unittest_stmts_gen.Generate(block, eval_mode)]
-        for seq_stmts in ExtractSeqStmts(
-            stmts, program_id, op_example_inputs_meta_getter
-        )
-        if len(seq_stmts) > 1
-        if op_example_inputs_meta_getter.HasAllInputs(program_id, seq_stmts[0].op)
-    ]
-
-    generated_sample_strs = set()
-    for subgraph_idx, (program_id, seq_stmts) in enumerate(program_seq_stmts_list):
-        split_positions_for_seq_stmts = ExtendHeadAndTail(
-            seq_stmts, split_positions, group_head_and_tail
-        )
-        for i in range(len(split_positions_for_seq_stmts) - 1):
-            seq_stmts_slice = seq_stmts[
-                split_positions_for_seq_stmts[i] : split_positions_for_seq_stmts[i + 1]
-            ]
-            sample_str = MakeSequenceSampleGenerator(
-                program_id, seq_stmts_slice, op_example_inputs_meta_getter
-            )
-            if sample_str not in generated_sample_strs:
-                generated_sample_strs.add(sample_str)
-                stmt_hash = GetSeqStmtsHash(seq_stmts_slice)
-                yield (subgraph_idx, program_id, stmt_hash, sample_str)
-
-
-def ExtendHeadAndTail(seq_stmts, split_positions, group_head_and_tail):
-    split_positions_for_seq_stmts = (
-        [0, *split_positions, len(seq_stmts)]
-        if group_head_and_tail
-        else split_positions
-    )
-    split_positions_for_seq_stmts = [
-        min(x, len(seq_stmts)) for x in split_positions_for_seq_stmts
-    ]
-    split_positions_for_seq_stmts = list(dict.fromkeys(split_positions_for_seq_stmts))
-    print(f"split_positions_for_seq_stmts: {split_positions_for_seq_stmts}")
-    return split_positions_for_seq_stmts
-
-
 def IsPrimitive(stmt):
     op = stmt.op
     return all(
@@ -394,20 +440,6 @@ def IsPrimitive(stmt):
             op.block_positional_arg_types,
             op.block_keyword_arg_types,
         )
-    )
-
-
-def ExtractSeqStmts(stmts, program_id, op_example_inputs_meta_getter):
-    def IsValidPrimitive(stmt):
-        return op_example_inputs_meta_getter.HasAllInputs(
-            program_id, stmt.op
-        ) and IsPrimitive(stmt)
-
-    yield from (
-        seq_stmts
-        for is_primitive, stmt_group in groupby(stmts, key=IsValidPrimitive)
-        if is_primitive
-        for seq_stmts in [list(stmt_group)]
     )
 
 
