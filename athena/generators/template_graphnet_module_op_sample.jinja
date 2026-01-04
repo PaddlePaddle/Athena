@@ -7,7 +7,7 @@
 {%- set max = example_tensor_meta.max -%}
 {%- set mean = example_tensor_meta.mean -%}
 {%- set std = example_tensor_meta.std -%}
-{%- if data != None -%}
+{%- if data is not none -%}
     shape = {{shape}}
     dtype = '{{dtype}}'
     data = {{data}}

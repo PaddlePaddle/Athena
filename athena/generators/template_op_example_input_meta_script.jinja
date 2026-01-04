@@ -164,7 +164,7 @@ def AppendRecordClassToOutputFile(content):
 {%- set max = block.input_tensor_descs[input_idx].max -%}
 {%- set mean = block.input_tensor_descs[input_idx].mean -%}
 {%- set std = block.input_tensor_descs[input_idx].std -%}
-{%- if data != None -%}
+{%- if data is not none -%}
     TensorMeta(dtype='{{dtype}}', shape={{shape}}, data={{data}})
 {%- elif big_dtype == "bool" -%}
     TensorMeta(dtype='{{bool}}', shape={{shape}}, max=2, min=0)
@@ -184,7 +184,7 @@ def AppendRecordClassToOutputFile(content):
 {%- set max = block.input_tensor_descs[input_idx].max -%}
 {%- set mean = block.input_tensor_descs[input_idx].mean -%}
 {%- set std = block.input_tensor_descs[input_idx].std -%}
-{%- if data != None -%}
+{%- if data is not none -%}
     paddle.to_tensor({{data}}, dtype='{{dtype}}').reshape({{shape}})
 {%- elif big_dtype == "bool" -%}
     paddle.cast(paddle.randint(low=0, high=2, shape={{shape}}, dtype='int32'), 'bool')

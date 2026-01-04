@@ -544,11 +544,6 @@ class GraphnetSequenceSampleGenerator:
         type_name = pos_arg_type_names[input_idx]
         return type_name
 
-    def _GetTemplate(self, template_name):
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-        with open(f"{dir_path}/{template_name}", "r") as f:
-            return jinja_env.get_template(f.read())
-
 
 def GetSha256sum(content):
     m = hashlib.sha256()
