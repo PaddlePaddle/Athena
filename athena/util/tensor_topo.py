@@ -1,7 +1,6 @@
 from typing import Dict, List
 from collections import OrderedDict
 from dataclasses import dataclass
-import sys
 from athena.util.input_output_tensors_extractor import InputOutputTensorsExtractor
 from athena.util.block_op_calls_extractor import BlockOpCallsExtractor
 import itertools
@@ -27,12 +26,13 @@ def GetOpId2OpPipeInOutNamesSignature(
     free_vars,
     args,
     get_local_name,
+    eval_mode,
 ) -> Dict[int, OpPipeInOutNamesSignature]:
     op_id2used = op_id2used_by_me_and_downstream
     if len(op_id2used) == 0:
         return {}
     extractor = InputOutputTensorsExtractor(func)
-    input_tensors, output_tensors = extractor.Extract(free_vars, args)
+    input_tensors, output_tensors = extractor.Extract(free_vars, args, eval_mode)
     input_tensor_names = [get_local_name(t) for t in input_tensors]
 
     def get_in_names_list():
@@ -72,11 +72,12 @@ def GetOpId2TensorNamesUsedByMeAndDownstream(
     free_vars,
     args,
     get_local_name,
+    eval_mode,
 ) -> Dict[int, List[str]]:
     in_out_name_sig_extractor = OpInOutNameSignatureExtractor(get_local_name)
     in_out_names_sigs = in_out_name_sig_extractor.Extract(func, free_vars, args)
     input_tensors, output_tensors = InputOutputTensorsExtractor(func).Extract(
-        free_vars, args
+        free_vars, args, eval_mode
     )
     input_tensor_names = [get_local_name(tensor) for tensor in input_tensors]
     output_tensor_names = [get_local_name(tensor) for tensor in output_tensors]
@@ -138,7 +139,6 @@ def _GetTensorName2ProducerIdx(in_out_names_sigs, input_tensors, get_local_name)
 
 
 class OpInOutNameSignatureExtractor:
-
     def __init__(self, get_local_name):
         self.in_out_names_sigs = []
         self.get_local_name = get_local_name

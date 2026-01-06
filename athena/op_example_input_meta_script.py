@@ -98,15 +98,15 @@ def IsProgramEmpty(ir_program):
     return op_count == 0
 
 
-def ExtractInputTensors(ir_program):
+def ExtractInputTensors(ir_program, eval_mode):
     module_block_func = GetModuleBlockFunc(ir_program)
     extractor = InputOutputTensorsExtractor(module_block_func)
-    input_tensors, _ = extractor.Extract(free_vars=[], args=[])
+    input_tensors, _ = extractor.Extract(free_vars=[], args=[], eval_mode=eval_mode)
     return input_tensors
 
 
-def HasExampleInputs(ir_program, example_inputs_meta_getter):
-    input_tensors = ExtractInputTensors(ir_program)
+def HasExampleInputs(ir_program, example_inputs_meta_getter, eval_mode):
+    input_tensors = ExtractInputTensors(ir_program, eval_mode)
     return example_inputs_meta_getter.HasAllInputExamples(
         program_id=int(type(ir_program).__name__[len("PirProgram_") :]),
         input_tensors=input_tensors,
@@ -138,7 +138,9 @@ def OnlyValidTypes(ir_program):
     )
 
 
-def GetOutputUnittests(original_programs_file, example_inputs_file, bucket_size):
+def GetOutputUnittests(
+    original_programs_file, example_inputs_file, bucket_size, eval_mode=False
+):
     example_inputs_meta_getter = MakeExampleInputsMetaGetter(
         GetClasses(example_inputs_file)
     )
@@ -149,7 +151,7 @@ def GetOutputUnittests(original_programs_file, example_inputs_file, bucket_size)
         for ir_program in [cls()]
         if not IsBackwardProgram(ir_program)
         if not IsProgramEmpty(ir_program)
-        if HasExampleInputs(ir_program, example_inputs_meta_getter)
+        if HasExampleInputs(ir_program, example_inputs_meta_getter, eval_mode)
         if OnlyValidTypes(ir_program)
     )
 
@@ -168,7 +170,7 @@ def GetOutputUnittests(original_programs_file, example_inputs_file, bucket_size)
             ", ".join(type(x).__name__ for x in ir_program_group),
             file=sys.stderr,
         )
-        name, unittest = generator.Generate()
+        name, unittest = generator.Generate(eval_mode)
         print(
             "OpExampleInputMetaScriptGenerator Generated pir_programs:",
             ", ".join(type(x).__name__ for x in ir_program_group),

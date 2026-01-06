@@ -55,6 +55,9 @@ class GraphnetSequenceSampleGenerator:
                 op_id2seq_stmt
             ),
             tensor_name4tensor_id=self.MakeTensorName4TensorId(op_id2seq_stmt),
+            tensor_original_name4tensor_id=self.MakeTensorOriginalName4TensorId(
+                op_id2seq_stmt
+            ),
             tensor_name4operand_id=self.MakeTensorName4OperandId(op_id2seq_stmt),
             input_spec_shape_dtype4tensor_id=self.MakeInputSpecShapeAndDtype4TensorId(
                 op_id2seq_stmt,
@@ -91,11 +94,17 @@ class GraphnetSequenceSampleGenerator:
 
     def GetOutputTensorNames(self, seq_stmts):
         tensors_used_by_downstream = set(seq_stmts[-1].tensors_used_by_downstream)
+        tensor_names_to_remove = set()
+        for stmt in seq_stmts:
+            if stmt.op_name in ["pd_op.full_int_array", "pd_op.full"]:
+                tensor_names_to_remove.update(stmt.output_tensor_names)
+
         return [
             tensor_name
             for stmt in seq_stmts
             for tensor_name in stmt.output_tensor_names
             if tensor_name in tensors_used_by_downstream
+            if tensor_name not in tensor_names_to_remove
         ]
 
     def MakeImmediateValue4OperandId(
@@ -337,6 +346,17 @@ class GraphnetSequenceSampleGenerator:
 
         return TensorName4TensorId
 
+    def MakeTensorOriginalName4TensorId(
+        self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
+    ):
+        def GetSourceNames(op_id):
+            return op_id2seq_stmt[op_id].input_tensor_original_names
+
+        def TensorOriginalName4TensorId(tensor_id):
+            return tensor_id.get_source_name(GetSourceNames)
+
+        return TensorOriginalName4TensorId
+
     def MakeTensorListMemberIds4OperandId(
         self, op_id2seq_stmt: OrderedDict[int, PyCodeStmt]
     ):
@@ -523,11 +543,6 @@ class GraphnetSequenceSampleGenerator:
         assert input_idx < len(pos_arg_type_names), f"op.name:{op.name}, args:{args}"
         type_name = pos_arg_type_names[input_idx]
         return type_name
-
-    def _GetTemplate(self, template_name):
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-        with open(f"{dir_path}/{template_name}", "r") as f:
-            return jinja_env.get_template(f.read())
 
 
 def GetSha256sum(content):

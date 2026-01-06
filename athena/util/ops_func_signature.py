@@ -92,6 +92,7 @@ class OpsFuncSignature:
         OperandId, t.Optional[t.List[TensorListMemberId]]
     ]
     tensor_name4tensor_id: t.Callable[TensorId, str]
+    tensor_original_name4tensor_id: t.Callable[TensorId, str]
     tensor_name4operand_id: t.Callable[OperandId, str]
     input_spec_shape_dtype4tensor_id: t.Callable[TensorId, InputSpecDesc]
     example_input_meta4tensor_id: t.Callable[TensorId, InputTensorDesc]

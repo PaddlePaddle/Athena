@@ -75,6 +75,7 @@
 {%- set shape, dtype = sig.input_spec_shape_dtype4tensor_id(tensor_id) %}
 class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
     name = "{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}"
+    original_name = "{{tensor_name_converter(sig.tensor_original_name4tensor_id(tensor_id))}}"
     {{get_input_tensor_instance(example_tensor_meta)}}
 {{ '\n' }}
 {%- endif %}
@@ -82,15 +83,23 @@ class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
 
 # --- seperate line ----
 
+{%- set param_list = [] -%}
 {%- for tensor_id in sig.tensor_ids %}
-{%- if 'parameter' in sig.tensor_name4tensor_id(tensor_id) %}
+    {%- set tensor_name = sig.tensor_name4tensor_id(tensor_id) %}
+    {%- if 'parameter' in tensor_name %}
+        {%- set num = tensor_name.split("_")[1] | int %}
+        {%- set _ = param_list.append({'tensor_id': tensor_id, 'num': num}) %}
+    {%- endif %}
+{%- endfor %}
+{%- set param_list = param_list | sort(attribute="num") -%}
+{%- for item in param_list %}
+{%- set tensor_id = item.tensor_id %}
 {%- set example_tensor_meta = sig.example_input_meta4tensor_id(tensor_id) %}
 {%- set shape, dtype = sig.input_spec_shape_dtype4tensor_id(tensor_id) %}
 class Program_weight_tensor_{{sig.tensor_name4tensor_id(tensor_id)}}:
     name = "{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}"
+    original_name = "{{tensor_name_converter(sig.tensor_original_name4tensor_id(tensor_id))}}"
     {{get_input_tensor_instance(example_tensor_meta)}}
-{{ '\n' }}
-{%- endif %}
 {%- endfor %}
 
 # --- seperate line ----

@@ -7,7 +7,7 @@
 {%- set max = example_tensor_meta.max -%}
 {%- set mean = example_tensor_meta.mean -%}
 {%- set std = example_tensor_meta.std -%}
-{%- if data != None -%}
+{%- if data is not none -%}
     shape = {{shape}}
     dtype = '{{dtype}}'
     data = {{data}}
@@ -54,9 +54,11 @@
 {%- for arg_name in block.input_arg_names %}
 {%- if "parameter" not in arg_name %}
 {%- set input_idx = loop.index0 %}
+{%- set original_name = block.input_original_names[input_idx] %}
 {%- set example_tensor_meta = block.input_tensor_descs[input_idx] %}
 class Program_weight_tensor_{{arg_name}}:
     name = "{{arg_name}}"
+    original_name = "{{original_name}}"
     {{get_input_tensor_instance(example_tensor_meta)}}
 {%- endif %}
 {%- endfor %}
@@ -73,9 +75,11 @@ class Program_weight_tensor_{{arg_name}}:
 {%- for arg_name in block.input_arg_names %}
 {%- if "parameter" in arg_name %}
 {%- set input_idx = loop.index0 %}
+{%- set original_name = block.input_original_names[input_idx] %}
 {%- set example_tensor_meta = block.input_tensor_descs[input_idx] %}
 class Program_weight_tensor_{{arg_name}}:
     name = "{{arg_name}}"
+    original_name = "{{original_name}}"
     {{get_input_tensor_instance(example_tensor_meta)}}
 {%- endif %}
 {%- endfor %}
