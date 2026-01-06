@@ -33,17 +33,27 @@ class SequenceFuncDesc:
 
 
 class GraphnetSequenceSampleGenerator:
-    def __init__(self, program_id, op_example_inputs_meta_getter):
+    def __init__(self, program_id, program_seq_stmts, op_example_inputs_meta_getter):
         self.program_id = program_id
+        self.program_seq_stmts = program_seq_stmts
         self.op_example_inputs_meta_getter = op_example_inputs_meta_getter
         self.input_spec_mode = "original"
 
-    def Generate(self, seq_stmts):
-        seq_func_desc = self.MakeSequenceFuncDesc(seq_stmts)
+    def Generate(self, subgraph_range, use_all_inputs):
+        assert isinstance(subgraph_range, (tuple, list)) and len(subgraph_range) == 2
+        seq_stmts = self.program_seq_stmts[subgraph_range[0] : subgraph_range[1]]
+        seq_func_desc = self.MakeSequenceFuncDesc(
+            seq_stmts, use_all_inputs and subgraph_range[0] == 0
+        )
         return self._RenderTemplate(seq_func_desc)
 
-    def MakeSequenceFuncDesc(self, seq_stmts):
-        op_id2seq_stmt = OrderedDict((stmt.op_id, stmt) for stmt in seq_stmts)
+    def MakeSequenceFuncDesc(self, seq_stmts, use_all_inputs):
+        if use_all_inputs:
+            op_id2seq_stmt = OrderedDict(
+                (stmt.op_id, stmt) for stmt in self.program_seq_stmts
+            )
+        else:
+            op_id2seq_stmt = OrderedDict((stmt.op_id, stmt) for stmt in seq_stmts)
         ops_func_signature = OpsFuncSignature(
             tensor_ids=self.GetTensorIds(op_id2seq_stmt),
             operand_ids=self.GetOperandIds(op_id2seq_stmt),
