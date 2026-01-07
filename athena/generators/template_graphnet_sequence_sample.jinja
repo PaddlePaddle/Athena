@@ -120,7 +120,10 @@ class GraphModule(paddle.nn.Layer):
         {%- endfor -%}
         {%- for tensor_id in sig.tensor_ids -%}
             {%- if 'parameter' not in sig.tensor_name4tensor_id(tensor_id) %}
+            {%- set data, dtype = sig.immediate_value4int_array_member_id(tensor_id) -%}
+            {%- if data is none %}
             {{"\t\t"}}{{tensor_name_converter(sig.tensor_name4tensor_id(tensor_id))}}{{","}}
+            {%- endif %}
             {%- endif %}
         {%- endfor -%}
     ):
