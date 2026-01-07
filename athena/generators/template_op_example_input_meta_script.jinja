@@ -77,6 +77,16 @@ def CalculateTensorMeta(tensor, meta_name):
         raise NotImplementedError(f"meta_name: {meta_name}")
 
 
+def IsInitialized(tensor):
+    try:
+        is_initialized = isinstance(tensor, paddle.Tensor) and tensor.numel() > 0
+        _ = x.shape
+        _ = x.dtype
+        return is_initialized
+    except Exception:
+        return False
+
+
 def InitTensorMeta(tensor, meta_name, tensor_meta):
     if tensor_meta:
         return getattr(tensor_meta, meta_name)
@@ -88,6 +98,8 @@ def InitTensorMeta(tensor, meta_name, tensor_meta):
         return [InitTensorMeta(t, meta_name, tensor_meta) for t in tensor]
     if not hasattr(tensor, meta_name):
         raise NotImplementedError(f"type(tensor): {type(tensor)}, meta_name: {meta_name}")
+    if not IsInitialized(tensor):
+        return None
     kLimit = 64
     if tensor.numel().item() < kLimit:
         return None
@@ -109,6 +121,8 @@ def InitTensorData(tensor):
         return [InitTensorData(t) for t in tensor]
     if not hasattr(tensor, 'numel'):
         raise NotImplementedError(f"type(tensor): {type(tensor)}")
+    if not IsInitialized(tensor):
+        return None
     kLimit = 64
     if tensor.numel().item() >= kLimit:
         return None
