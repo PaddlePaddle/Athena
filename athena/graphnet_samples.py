@@ -9,7 +9,7 @@ import itertools
 from itertools import groupby
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List
 
 from athena.generators.blocks_generator import BlocksGenerator
 from athena.generators.block_name_generator import BlockNameGenerator
@@ -78,10 +78,11 @@ class GraphnetSample:
     input_meta: str
     weight_meta: str
     model: str
+    subgraph_range: List[int] = None
 
 
 def ConvertOutputStringToSample(
-    model_name, unique_name, subgraph_idx, program_id, sample_str
+    model_name, unique_name, subgraph_idx, program_id, sample_str, subgraph_range=None
 ):
     metadata = {
         "framework": "paddle",
@@ -99,6 +100,7 @@ def ConvertOutputStringToSample(
         input_meta=input_meta.strip("\n\n\n") + "\n",
         weight_meta=weight_meta.rstrip("\n\n\n") + "\n",
         model=model,
+        subgraph_range=subgraph_range,
     )
     # PrintToTerminal(unique_name, sample_str)
     return sample
@@ -277,19 +279,30 @@ class SubgraphGenerator:
                     stmt_hash = GetSeqStmtsHash(
                         program_seq_stmts[subgraph_range[0] : subgraph_range[1]]
                     )
-                    yield (subgraph_idx, program_id, stmt_hash, sample_str)
+                    yield (
+                        subgraph_idx,
+                        program_id,
+                        stmt_hash,
+                        subgraph_range,
+                        sample_str,
+                    )
 
     def __call__(self, split_positions, group_head_and_tail=True, use_all_inputs=False):
         graphnet_sample_results = []
         seg_counter = defaultdict(lambda: itertools.count())
-        for _, (subgraph_idx, program_id, uid, sample_str) in enumerate(
+        for _, (subgraph_idx, program_id, uid, subgraph_range, sample_str) in enumerate(
             self.GetOutputSampleStrings(
                 split_positions, group_head_and_tail, use_all_inputs
             )
         ):
             unique_name = f"{uid}_{next(seg_counter[uid])}"
             sample = ConvertOutputStringToSample(
-                self.model_name, unique_name, subgraph_idx, program_id, sample_str
+                self.model_name,
+                unique_name,
+                subgraph_idx,
+                program_id,
+                sample_str,
+                subgraph_range,
             )
             graphnet_sample_results.append(sample)
         print(
