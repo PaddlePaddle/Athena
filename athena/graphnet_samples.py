@@ -9,7 +9,7 @@ import itertools
 from itertools import groupby
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, List
 
 from athena.generators.blocks_generator import BlocksGenerator
 from athena.generators.block_name_generator import BlockNameGenerator
@@ -57,11 +57,16 @@ flags.DEFINE_boolean(
     "Whether extend split_positions to include the head and tail of the statement sequence.",
 )
 flags.DEFINE_boolean(
+    "use_all_inputs",
+    False,
+    "Whether use all inputs of the ir program.",
+)
+flags.DEFINE_boolean(
     "eval_mode",
     False,
     "Generate graphnet sample for eval, which only keep output tensors with maximum depth (longest chain).",
 )
-flags.DEFINE_string("tmp_dir", tempfile.gettempdir(), "tmp directory.")
+flags.DEFINE_string("tmp_dir", None, "tmp directory.")
 
 
 @dataclass
@@ -73,10 +78,11 @@ class GraphnetSample:
     input_meta: str
     weight_meta: str
     model: str
+    subgraph_range: List[int] = None
 
 
 def ConvertOutputStringToSample(
-    model_name, unique_name, subgraph_idx, program_id, sample_str
+    model_name, unique_name, subgraph_idx, program_id, sample_str, subgraph_range=None
 ):
     metadata = {
         "framework": "paddle",
@@ -94,6 +100,7 @@ def ConvertOutputStringToSample(
         input_meta=input_meta.strip("\n\n\n") + "\n",
         weight_meta=weight_meta.rstrip("\n\n\n") + "\n",
         model=model,
+        subgraph_range=subgraph_range,
     )
     # PrintToTerminal(unique_name, sample_str)
     return sample
@@ -154,7 +161,7 @@ class SubgraphGenerator:
         example_inputs_file,
         op_example_inputs_file,
         eval_mode,
-        tmp_dir,
+        tmp_dir=None,
     ):
         self.model_name = model_name
         self.programs_file = programs_file
@@ -243,50 +250,63 @@ class SubgraphGenerator:
         print(f"split_positions_for_seq_stmts: {split_positions_for_seq_stmts}")
         return split_positions_for_seq_stmts
 
-    def GetOutputSampleStrings(self, split_positions, group_head_and_tail=True):
+    def GetOutputSampleStrings(
+        self, split_positions, group_head_and_tail=True, use_all_inputs=False
+    ):
         def MakeSequenceSampleGenerator(
-            program_id, seq_stmts, op_example_inputs_meta_getter
+            program_id, program_seq_stmts, op_example_inputs_meta_getter
         ):
-            generator = GraphnetSequenceSampleGenerator(
-                program_id, op_example_inputs_meta_getter
+            return GraphnetSequenceSampleGenerator(
+                program_id, program_seq_stmts, op_example_inputs_meta_getter
             )
-            return generator.Generate(seq_stmts)
 
         print(f"origin split_positions: {split_positions}")
         generated_sample_strs = set()
-        for subgraph_idx, (program_id, seq_stmts) in enumerate(
+        for subgraph_idx, (program_id, program_seq_stmts) in enumerate(
             self.program_seq_stmts_list
         ):
+            generator = MakeSequenceSampleGenerator(
+                program_id, program_seq_stmts, self.op_example_inputs_meta_getter
+            )
             split_positions_for_seq_stmts = self.ExtendHeadAndTail(
-                seq_stmts, split_positions, group_head_and_tail
+                program_seq_stmts, split_positions, group_head_and_tail
             )
             for i in range(len(split_positions_for_seq_stmts) - 1):
-                seq_stmts_slice = seq_stmts[
-                    split_positions_for_seq_stmts[i] : split_positions_for_seq_stmts[
-                        i + 1
-                    ]
-                ]
-                sample_str = MakeSequenceSampleGenerator(
-                    program_id, seq_stmts_slice, self.op_example_inputs_meta_getter
-                )
+                subgraph_range = split_positions_for_seq_stmts[i : i + 2]
+                sample_str = generator.Generate(subgraph_range, use_all_inputs)
                 if sample_str not in generated_sample_strs:
                     generated_sample_strs.add(sample_str)
-                    stmt_hash = GetSeqStmtsHash(seq_stmts_slice)
-                    yield (subgraph_idx, program_id, stmt_hash, sample_str)
+                    stmt_hash = GetSeqStmtsHash(
+                        program_seq_stmts[subgraph_range[0] : subgraph_range[1]]
+                    )
+                    yield (
+                        subgraph_idx,
+                        program_id,
+                        stmt_hash,
+                        subgraph_range,
+                        sample_str,
+                    )
 
-    def __call__(self, split_positions, group_head_and_tail=True):
+    def __call__(self, split_positions, group_head_and_tail=True, use_all_inputs=False):
         graphnet_sample_results = []
         seg_counter = defaultdict(lambda: itertools.count())
-        for _, (subgraph_idx, program_id, uid, sample_str) in enumerate(
-            self.GetOutputSampleStrings(split_positions, group_head_and_tail)
+        for _, (subgraph_idx, program_id, uid, subgraph_range, sample_str) in enumerate(
+            self.GetOutputSampleStrings(
+                split_positions, group_head_and_tail, use_all_inputs
+            )
         ):
             unique_name = f"{uid}_{next(seg_counter[uid])}"
             sample = ConvertOutputStringToSample(
-                self.model_name, unique_name, subgraph_idx, program_id, sample_str
+                self.model_name,
+                unique_name,
+                subgraph_idx,
+                program_id,
+                sample_str,
+                subgraph_range,
             )
             graphnet_sample_results.append(sample)
         print(
-            f"[SubgraphGenerator] Generate {len(graphnet_sample_results)} graphnet subgraph samples ({split_positions=}, {group_head_and_tail=})."
+            f"[SubgraphGenerator] Generate {len(graphnet_sample_results)} graphnet subgraph samples ({split_positions=}, {group_head_and_tail=}, {use_all_inputs=})."
         )
         return graphnet_sample_results
 
@@ -298,6 +318,7 @@ def RunGeneration(
     op_example_inputs,
     split_positions,
     group_head_and_tail,
+    use_all_inputs,
     eval_mode,
     tmp_dir=None,
 ):
@@ -313,7 +334,9 @@ def RunGeneration(
             eval_mode,
             tmp_dir,
         )
-        graphnet_sample_results = generator(split_positions, group_head_and_tail)
+        graphnet_sample_results = generator(
+            split_positions, group_head_and_tail, use_all_inputs
+        )
     return graphnet_sample_results
 
 
@@ -327,6 +350,7 @@ def main(argv):
         op_example_inputs=FLAGS.op_example_inputs,
         split_positions=split_positions,
         group_head_and_tail=FLAGS.group_head_and_tail,
+        use_all_inputs=FLAGS.use_all_inputs,
         eval_mode=FLAGS.eval_mode,
     )
 
